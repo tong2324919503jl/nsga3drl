@@ -1,0 +1,8 @@
+{
+  "instances": 30,
+  "task_count": 150,
+  "vehicle_count": 10,
+  "distribution": "clustered",
+  "dynamic_rate": 0.1,
+  "seed": 42
+}

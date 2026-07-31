@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nsga3drl"
+version = "0.1.0"
+description = "Open MTSP with NSGA-III, dynamic insertion, and PPO operator selection"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy==1.26.4",
+  "scipy==1.11.4",
+  "torch==2.2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.2.2"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

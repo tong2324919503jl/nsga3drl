@@ -1,0 +1,15 @@
+name: nsga3drl
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11.9
+  - numpy=1.26.4
+  - scipy=1.11.4
+  - pytorch=2.2.2
+  - pytest=8.2.2
+  - pip=24.2
+  - setuptools=70.3.0
+  - pip:
+      - -e .
