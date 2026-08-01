@@ -8,6 +8,7 @@ import time
 import numpy as np
 
 from nsga3drl.data.io import load_dataset
+from nsga3drl.algorithms.nsga3 import NSGA3Result
 from nsga3drl.rl.environment import OperatorSelectionEnv
 from nsga3drl.rl.ppo import PPOTrainer
 
@@ -42,15 +43,37 @@ def main() -> None:
             reward_sum += reward
             events += info["events_injected"]
         instance_elapsed = time.perf_counter() - instance_started
-        results.append((info["hypervolume"], reward_sum, events, environment.algorithm.problem.task_count, instance_elapsed))
+        algorithm = environment.algorithm
+        result = NSGA3Result(algorithm.population, algorithm.objectives, algorithm.history)
+        preferred_index = result.preferred_index(instance.preference)
+        preferred_genome = result.population[preferred_index]
+        preferred_objective = result.objectives[preferred_index]
+        vehicle_route_lengths = algorithm.problem.route_lengths(preferred_genome).tolist()
+        preferred = {
+            "preference": list(instance.preference),
+            "total_distance": float(preferred_objective[0]),
+            "variance": float(preferred_objective[1]),
+            "vehicle_route_lengths": vehicle_route_lengths,
+        }
+        results.append({
+            "instance_id": instance.instance_id,
+            "final_hv": float(info["hypervolume"]),
+            "reward_sum": float(reward_sum),
+            "events": events,
+            "active_tasks": algorithm.problem.task_count,
+            "elapsed_seconds": instance_elapsed,
+            "preferred_solution": preferred,
+        })
         elapsed = time.perf_counter() - started
         projected_total = elapsed / (index + 1) * len(instances)
         print(
             f"instance={instance.instance_id} final_hv={info['hypervolume']:.4f} "
             f"reward_sum={reward_sum:.5f} events={events} active_tasks={environment.algorithm.problem.task_count} "
-            f"elapsed={instance_elapsed:.3f}s projected_total={projected_total:.3f}s"
+            f"elapsed={instance_elapsed:.3f}s projected_total={projected_total:.3f}s "
+            f"preferred_distance={preferred['total_distance']:.3f} preferred_variance={preferred['variance']:.3f} "
+            f"preference={preferred['preference']}"
         )
-    values = np.asarray(results, dtype=float)
+    values = np.asarray([[item["final_hv"], item["reward_sum"], item["events"], item["active_tasks"], item["elapsed_seconds"]] for item in results], dtype=float)
     total_elapsed = time.perf_counter() - started
     metrics_path = Path(args.metrics) if args.metrics else Path(args.checkpoint).with_suffix(".eval.json")
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,10 +87,7 @@ def main() -> None:
         "elapsed_seconds": total_elapsed,
         "projected_total_seconds_last": (total_elapsed / len(instances) * len(instances)) if instances else 0.0,
         "mean_instance_seconds": float(values[:, 4].mean()) if len(values) else 0.0,
-        "results": [
-            {"final_hv": row[0], "reward_sum": row[1], "events": int(row[2]), "active_tasks": int(row[3]), "elapsed_seconds": row[4]}
-            for row in values
-        ],
+        "results": results,
     }, indent=2), encoding="utf-8")
     print(
         f"summary instances={len(results)} mean_final_hv={values[:, 0].mean():.4f} "
