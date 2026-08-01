@@ -40,7 +40,7 @@ data/test_150x10/
 | `vehicle_starts` | `float[vehicle_count][2]` | 各车辆的初始位置，按数组下标对应车辆编号 `0..vehicle_count-1`。二维坐标 `[x, y]`。 |
 | `task_coordinates` | `float[task_count][2]` | **初始已知**任务点坐标。默认地图范围为 `[0, 100] x [0, 100]`。 |
 | `task_ids` | `int[task_count]` | 与 `task_coordinates` 同下标对应的任务 ID。当前整数分隔符编码要求初始 ID 连续为 `1..task_count`；`0` 保留作车辆路径分隔符。 |
-| `preference` | `float[2]` | 用户偏好 `[效率权重, 公平权重]`，两项非负且和为 1。当前生成器默认 `[0.5, 0.5]`。它不改变 NSGA-III 的双目标定义。 |
+| `preference` | `float[2]` | 用户偏好 `[效率权重, 公平权重]`，两项非负且和为 1。它作为 PPO 状态输入，并用于从最终帕累托前沿选择推荐解；它不改变 NSGA-III 的双目标定义。生成器默认 `[0.5, 0.5]`，`--preference-mode balanced5` 可均衡生成五组偏好。 |
 | `events` | object array | 尚未出现的动态任务事件，按到达代数处理。动态点**不包含**在 `task_coordinates` 中。 |
 | `seed` | integer | 生成此实例使用的随机种子，用于复现相同坐标、事件和空间分布。 |
 

@@ -1,4 +1,4 @@
-from nsga3drl.data.generator import generate_dataset, generate_instance
+from nsga3drl.data.generator import BALANCED_PREFERENCES, generate_dataset, generate_instance
 from nsga3drl.data.io import load_dataset
 from nsga3drl.data.schema import DynamicEvent, MTSPInstance
 from nsga3drl.data.validation import validate_dataset, validate_instance
@@ -14,6 +14,11 @@ def test_dataset_manifest_matches_files(tmp_path) -> None:
     generate_dataset(tmp_path, 3, 10, 2, seed=3)
     assert all(report.valid for report in validate_dataset(tmp_path))
     assert len(load_dataset(tmp_path)) == 3
+
+
+def test_balanced_preferences_are_written_to_instances(tmp_path) -> None:
+    generate_dataset(tmp_path, 5, 10, 2, seed=3, preference_choices=BALANCED_PREFERENCES)
+    assert [instance.preference for instance in load_dataset(tmp_path)] == list(BALANCED_PREFERENCES)
 
 
 def test_overlapping_task_coordinates_fail_validation() -> None:

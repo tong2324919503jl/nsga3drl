@@ -24,6 +24,7 @@ def main() -> None:
     result = algorithm.run(args.generations)
     elapsed = time.perf_counter() - started
     pareto = result.pareto_indices
+    preferred = result.preferred_index(instance.preference)
     if instance.events:
         print(
             f"dynamic events processed={len(algorithm.event_log)}/{len(instance.events)}; "
@@ -31,6 +32,10 @@ def main() -> None:
             f"dynamic_time={sum(item['elapsed_seconds'] for item in algorithm.event_log):.3f}s"
         )
     print(f"final HV={result.history[-1]['hypervolume']:.4f}; pareto solutions={len(pareto)}; elapsed={elapsed:.3f}s")
+    print(
+        f"preference={list(instance.preference)}; recommended "
+        f"total_distance={result.objectives[preferred, 0]:.3f}, variance={result.objectives[preferred, 1]:.3f}"
+    )
     for objective in result.objectives[pareto[:5]]:
         print(f"total_distance={objective[0]:.3f}, variance={objective[1]:.3f}")
 

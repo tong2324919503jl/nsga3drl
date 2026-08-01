@@ -91,6 +91,15 @@ class NSGA3Result:
     def pareto_indices(self) -> np.ndarray:
         return np.asarray(non_dominated_sort(self.objectives)[0], dtype=int)
 
+    def preferred_index(self, preference: tuple[float, float]) -> int:
+        """Select one final Pareto solution after normalising both objectives."""
+        if len(preference) != 2 or min(preference) < 0 or not np.isclose(sum(preference), 1.0):
+            raise ValueError("preference must contain two non-negative weights summing to 1")
+        indices = self.pareto_indices
+        front = self.objectives[indices]
+        normalized = _normalize(front)
+        return int(indices[np.argmin(normalized @ np.asarray(preference, dtype=float))])
+
 
 class NSGA3:
     """Small, dependency-light NSGA-III implementation for the two-objective MVP."""

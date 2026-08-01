@@ -56,6 +56,13 @@ python scripts/generate_dataset.py --output data/demo --instances 30 --tasks 150
 python scripts/train_ppo.py --updates 10 --episodes-per-update 4
 ```
 
+训练 PPO 时，使用 `balanced5` 使偏好 `[0.1,0.9]`、`[0.3,0.7]`、`[0.5,0.5]`、`[0.7,0.3]`、`[0.9,0.1]` 在实例中均衡出现；偏好向量会作为 PPO 状态输入。固定单一偏好可使用 `--preference-mode fixed --preference 0.7 0.3`。
+
+```bash
+python scripts/generate_dataset.py --output data/train_150x10 --instances 50 --tasks 150 --vehicles 10 --distribution clustered --dynamic-rate 0.1 --preference-mode balanced5 --seed 20260801
+python scripts/generate_dataset.py --output data/test_150x10_preferences --instances 30 --tasks 150 --vehicles 10 --distribution clustered --dynamic-rate 0.1 --preference-mode balanced5 --seed 31415
+```
+
 使用已生成数据集而非临时随机实例：
 
 ```bash
@@ -65,6 +72,8 @@ python scripts/evaluate_ppo.py --dataset data/test --checkpoint checkpoints/ppo_
 ```
 
 动态事件会在其 `arrival_generation` 对应代开始前插入当前种群，并对受影响路径运行局部 2-opt。HV 的参考点会在每次动态插点后重置，因此 PPO 奖励只比较同一动态问题阶段内的相邻代。
+
+基线为“动态 NSGA-III + 随机变异算子选择”：它不使用 PPO，但会处理动态事件；最终从帕累托前沿按实例的用户偏好输出一个推荐解。
 
 训练每次 update 后都会覆盖保存 checkpoint，并写入 `<checkpoint>.train.json`；评估会写入 `<checkpoint>.eval.json`。终端中的 `elapsed` 是已完成部分的准确耗时，`projected_total` 是按当前平均速度预测的整轮总耗时。训练支持从 checkpoint 继续：
 

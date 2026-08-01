@@ -8,6 +8,15 @@ import numpy as np
 from .schema import DynamicEvent, MTSPInstance
 
 
+BALANCED_PREFERENCES: tuple[tuple[float, float], ...] = (
+    (0.1, 0.9),
+    (0.3, 0.7),
+    (0.5, 0.5),
+    (0.7, 0.3),
+    (0.9, 0.1),
+)
+
+
 def _coordinates(rng: np.random.Generator, count: int, distribution: str, width: float) -> np.ndarray:
     if distribution == "uniform":
         return rng.uniform(0, width, size=(count, 2))
@@ -59,17 +68,31 @@ def generate_dataset(
     seed: int = 0,
     distribution: str = "uniform",
     dynamic_rate: float = 0.0,
+    preference_choices: tuple[tuple[float, float], ...] | None = None,
 ) -> list[Path]:
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
     paths = []
     manifest = []
+    choices = preference_choices or ((0.5, 0.5),)
+    for preference in choices:
+        if len(preference) != 2 or min(preference) < 0 or not np.isclose(sum(preference), 1.0):
+            raise ValueError("each preference must have two non-negative values that sum to 1")
     for index, instance_seed in enumerate(rng.integers(0, 2**31 - 1, size=instances)):
-        instance = generate_instance(task_count, vehicle_count, int(instance_seed), distribution, dynamic_rate)
+        preference = choices[index % len(choices)]
+        instance = generate_instance(
+            task_count, vehicle_count, int(instance_seed), distribution, dynamic_rate, preference=preference
+        )
         path = output / f"{instance.instance_id}.json"
         instance.save(path)
         paths.append(path)
-        manifest.append({"index": index, "path": path.name, "seed": int(instance_seed), "events": len(instance.events)})
+        manifest.append({
+            "index": index,
+            "path": path.name,
+            "seed": int(instance_seed),
+            "events": len(instance.events),
+            "preference": list(preference),
+        })
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return paths

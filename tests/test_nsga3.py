@@ -9,3 +9,4 @@ def test_nsga3_preserves_legal_population() -> None:
     result = NSGA3(OpenMTSPProblem(instance), population_size=12, seed=5).run(3)
     assert all(validate(genome, 12, 3) for genome in result.population)
     assert result.history[-1]["hypervolume"] >= 0
+    assert result.preferred_index((0.5, 0.5)) in result.pareto_indices
