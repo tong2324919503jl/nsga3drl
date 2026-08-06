@@ -43,8 +43,8 @@ def validate_instance(instance: MTSPInstance, coordinate_tolerance: float = 1e-6
         errors.append("dynamic event task ids are not unique")
     if set(event_ids).intersection(instance.task_ids.tolist()):
         errors.append("dynamic event task ids overlap initial task ids")
-    if any(event.arrival_generation < 0 for event in instance.events):
-        errors.append("arrival_generation must be non-negative")
+    if any(event.arrival_completed_tasks is None or event.arrival_completed_tasks < 0 for event in instance.events):
+        errors.append("arrival_completed_tasks must be non-negative")
     # Dynamic points are not in task_coordinates yet, but must still be distinct
     # from every initial and future task point before an experiment begins.
     all_task_ids = np.asarray(instance.task_ids.tolist() + event_ids, dtype=int)

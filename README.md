@@ -11,7 +11,7 @@
 
 未包含：GAT、交叉注意力、偏好编码网络、PPO 父代选择、真实路网距离。
 
-数据集字段、动态事件与 `arrival_generation` 的精确定义见 [DATASET_FORMAT.md](DATASET_FORMAT.md)。
+数据集字段、动态事件与 `arrival_completed_tasks` 的精确定义见 [DATASET_FORMAT.md](DATASET_FORMAT.md)。
 
 ## Conda 环境安装
 
@@ -63,6 +63,15 @@ python scripts/generate_dataset.py --output data/train_150x10 --instances 50 --t
 python scripts/generate_dataset.py --output data/test_150x10_preferences --instances 30 --tasks 150 --vehicles 10 --distribution clustered --dynamic-rate 0.1 --preference-mode balanced5 --seed 31415
 ```
 
+`--distribution mixed` cycles through uniform, clustered and hotspot distributions. With `--paired-preferences --preference-mode balanced5`, `--instances` means the number of base spatial scenarios; each base scenario is emitted five times with identical coordinates/events and different preferences. PPO training defaults to `--sampling epoch`, which visits every instance once before reshuffling.
+
+数据集可以不保存偏好，由运行命令提供：
+
+```bash
+python scripts/generate_dataset.py --output data/test_no_preference --instances 20 --tasks 150 --vehicles 10 --distribution mixed --dynamic-rate 0.1 --omit-preference --seed 31415
+python scripts/evaluate_ppo.py --dataset data/test_no_preference --checkpoint checkpoints/ppo_ideal_150x10.best.pt --preference 0.5 0.5 --generations 160 --population 32
+```
+
 使用已生成数据集而非临时随机实例：
 
 ```bash
@@ -71,15 +80,25 @@ python scripts/train_ppo.py --dataset data/demo --updates 10 --episodes-per-upda
 python scripts/evaluate_ppo.py --dataset data/test --checkpoint checkpoints/ppo_operator_selector.pt --generations 20
 ```
 
-动态事件会在其 `arrival_generation` 对应代开始前插入当前种群，并对受影响路径运行局部 2-opt。HV 的参考点会在每次动态插点后重置，因此 PPO 奖励只比较同一动态问题阶段内的相邻代。
+NSGA-III/PPO 只优化初始任务；车辆执行初始计划时每完成 10 个任务才触发一次动态插点，动态阶段不再运行 NSGA-III/PPO。
 
-基线为“动态 NSGA-III + 随机变异算子选择”：它不使用 PPO，但会处理动态事件；最终从帕累托前沿按实例的用户偏好输出一个推荐解。
+基线为“静态初始 NSGA-III + 随机变异算子选择”，随后使用同一执行器进行 KNN 动态插点；动态执行阶段不再调用 NSGA-III 或 PPO。
+
+`run_baseline.py` 和 `evaluate_ppo.py` 输出的 `preferred_solution.total_distance`、`variance` 是动态执行完成后的真实路线目标；`initial_total_distance`、`initial_variance` 是初始 150 点方案的目标。数据集没有偏好字段时，必须通过 `--preference EFFICIENCY FAIRNESS` 提供权重；若数据集有偏好字段，则默认逐实例读取，也可以用命令行覆盖。
 
 训练每次 update 后都会覆盖保存 checkpoint，并写入 `<checkpoint>.train.json`；评估会写入 `<checkpoint>.eval.json`。终端中的 `elapsed` 是已完成部分的准确耗时，`projected_total` 是按当前平均速度预测的整轮总耗时。训练支持从 checkpoint 继续：
 
 ```bash
 python scripts/train_ppo.py --dataset data/demo --resume checkpoints/ppo_operator_selector.pt --checkpoint checkpoints/ppo_operator_selector.pt --updates 10
 ```
+
+训练可通过独立验证集选择累计奖励最高的最佳 checkpoint：
+
+```bash
+python scripts/train_ppo.py --dataset data/train --validation-dataset data/validation --validation-every 10 --validation-instances 10 --checkpoint checkpoints/ppo.pt
+```
+
+最佳模型会写入 `checkpoints/ppo.best.pt`；最终测试应加载该文件，而不是默认的最后一次 update 模型。
 
 评估调用 `greedy_action`，不计算梯度，也不更新参数；因此在相同实例、种群、代数和硬件条件下，测试阶段通常明显快于训练阶段。
 

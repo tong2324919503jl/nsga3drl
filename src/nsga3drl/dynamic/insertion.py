@@ -20,13 +20,16 @@ class InsertionDecision:
 
 
 class DynamicInsertionPlanner:
-    def __init__(self, instance: MTSPInstance, k_neighbors: int = 8):
+    def __init__(self, instance: MTSPInstance, k_neighbors: int = 8, vehicle_positions: np.ndarray | None = None):
         self.instance = instance
         self.k_neighbors = k_neighbors
+        self.vehicle_positions = np.asarray(vehicle_positions, dtype=float) if vehicle_positions is not None else instance.vehicle_starts
+        if self.vehicle_positions.shape != instance.vehicle_starts.shape:
+            raise ValueError("vehicle_positions must have shape (vehicle_count, 2)")
         self._coords = {int(task_id): coord for task_id, coord in zip(instance.task_ids, instance.task_coordinates)}
 
     def _route_length(self, vehicle: int, route: list[int]) -> float:
-        current = self.instance.vehicle_starts[vehicle]
+        current = self.vehicle_positions[vehicle]
         length = 0.0
         for task_id in route:
             target = self._coords[task_id]
@@ -76,7 +79,7 @@ class DynamicInsertionPlanner:
         original_length = self._route_length(vehicle, route)
         best_position, best_delta = 0, float("inf")
         for position in range(len(route) + 1):
-            before = self.instance.vehicle_starts[vehicle] if position == 0 else self._coords[route[position - 1]]
+            before = self.vehicle_positions[vehicle] if position == 0 else self._coords[route[position - 1]]
             after = None if position == len(route) else self._coords[route[position]]
             delta = float(np.linalg.norm(before - self._coords[new_task_id]))
             if after is not None:

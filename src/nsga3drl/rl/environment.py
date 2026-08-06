@@ -38,16 +38,29 @@ class OperatorSelectionEnv:
     action_count = len(NSGA3.ACTIONS)
     observation_size = 13
 
-    def __init__(self, instance: MTSPInstance, population_size: int = 48, generations: int = 40, seed: int = 0):
+    def __init__(
+        self,
+        instance: MTSPInstance,
+        population_size: int = 48,
+        generations: int = 40,
+        seed: int = 0,
+        preference: tuple[float, float] | None = None,
+    ):
         self.instance = instance
         self.population_size = population_size
         self.generations = generations
         self.seed = seed
+        self.preference = preference if preference is not None else instance.preference
+        if self.preference is None:
+            raise ValueError("a preference must be present in the dataset or supplied to the environment")
         self.algorithm: NSGA3 | None = None
 
     def reset(self, seed: int | None = None) -> np.ndarray:
         actual_seed = self.seed if seed is None else seed
-        self.algorithm = NSGA3(OpenMTSPProblem(self.instance), self.population_size, seed=actual_seed)
+        # Dynamic events are deliberately excluded from the learning episode.
+        # They are applied later by the execution-only insertion simulator.
+        static_instance = self.instance.without_events().with_preference(self.preference)
+        self.algorithm = NSGA3(OpenMTSPProblem(static_instance), self.population_size, seed=actual_seed)
         self.algorithm.initialize()
         return population_features(self.algorithm, self.generations)
 
@@ -56,7 +69,6 @@ class OperatorSelectionEnv:
             raise RuntimeError("call reset before step")
         if not 0 <= action < self.action_count:
             raise ValueError("invalid action")
-        injected = self.algorithm.process_events(self.algorithm.generation + 1)
         before = self.algorithm.current_hypervolume()
         record = self.algorithm.step(action, process_dynamic_events=False)
         after = self.algorithm.current_hypervolume()
@@ -66,6 +78,6 @@ class OperatorSelectionEnv:
             "hypervolume": after,
             "generation": self.algorithm.generation,
             "operator": NSGA3.ACTIONS[action],
-            "events_injected": injected,
+            "events_injected": 0,
         }
         return population_features(self.algorithm, self.generations), reward, done, info

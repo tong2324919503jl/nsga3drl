@@ -18,7 +18,24 @@ def test_dataset_manifest_matches_files(tmp_path) -> None:
 
 def test_balanced_preferences_are_written_to_instances(tmp_path) -> None:
     generate_dataset(tmp_path, 5, 10, 2, seed=3, preference_choices=BALANCED_PREFERENCES)
-    assert [instance.preference for instance in load_dataset(tmp_path)] == list(BALANCED_PREFERENCES)
+    # Dataset loading sorts files by instance ID, not generation order.
+    assert set(instance.preference for instance in load_dataset(tmp_path)) == set(BALANCED_PREFERENCES)
+
+
+def test_paired_preferences_share_the_same_spatial_instance(tmp_path) -> None:
+    generate_dataset(
+        tmp_path, 1, 10, 2, seed=3, preference_choices=BALANCED_PREFERENCES,
+        distribution_choices=("clustered",), paired_preferences=True,
+    )
+    instances = load_dataset(tmp_path)
+    assert len(instances) == len(BALANCED_PREFERENCES)
+    assert all((instance.task_coordinates == instances[0].task_coordinates).all() for instance in instances[1:])
+    assert all((instance.vehicle_starts == instances[0].vehicle_starts).all() for instance in instances[1:])
+
+
+def test_preference_can_be_omitted_from_json(tmp_path) -> None:
+    generate_dataset(tmp_path, 1, 10, 2, seed=3, include_preference=False)
+    assert load_dataset(tmp_path)[0].preference is None
 
 
 def test_overlapping_task_coordinates_fail_validation() -> None:

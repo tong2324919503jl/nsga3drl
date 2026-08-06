@@ -106,7 +106,14 @@ class NSGA3:
 
     ACTIONS = ("swap", "inversion", "relocate", "separator_shift")
 
-    def __init__(self, problem: OpenMTSPProblem, population_size: int = 64, partitions: int = 31, seed: int = 0):
+    def __init__(
+        self,
+        problem: OpenMTSPProblem,
+        population_size: int = 64,
+        partitions: int = 31,
+        seed: int = 0,
+        dynamic_events: bool = False,
+    ):
         if population_size < 4:
             raise ValueError("population_size must be at least 4")
         self.problem = problem
@@ -118,7 +125,8 @@ class NSGA3:
         self.generation = 0
         self.history: list[dict] = []
         self.hv_reference: np.ndarray | None = None
-        self._events = sorted(problem.instance.events, key=lambda event: (event.arrival_generation, event.task_id))
+        self.dynamic_events = dynamic_events
+        self._events = sorted(problem.instance.events, key=lambda event: (event.arrival_completed_tasks, event.task_id))
         self._processed_event_ids: set[int] = set()
         self.event_log: list[dict] = []
         self.last_hv_delta = 0.0
@@ -131,7 +139,7 @@ class NSGA3:
         self.objectives = self.problem.evaluate_population(self.population)
         self.generation = 0
         self.hv_reference = self.objectives.max(axis=0) * 1.5 + 1.0
-        initial_events = self.process_events(0)
+        initial_events = self.process_events(0) if self.dynamic_events else 0
         self._record(events_injected=initial_events)
 
     def current_hypervolume(self) -> float:
@@ -156,7 +164,7 @@ class NSGA3:
             raise RuntimeError("initialize before processing dynamic events")
         scheduled = [
             event for event in self._events
-            if event.arrival_generation == generation and event.task_id not in self._processed_event_ids
+            if event.arrival_completed_tasks == generation and event.task_id not in self._processed_event_ids
         ]
         for event in scheduled:
             event_started = time.perf_counter()
@@ -284,7 +292,7 @@ class NSGA3:
         if self.population is None:
             self.initialize()
         assert self.population is not None and self.objectives is not None
-        events_injected = self.process_events(self.generation + 1) if process_dynamic_events else 0
+        events_injected = self.process_events(self.generation + 1) if self.dynamic_events and process_dynamic_events else 0
         before_hv = self.current_hypervolume()
         offspring = self._offspring(action)
         offspring_objectives = self.problem.evaluate_population(offspring)

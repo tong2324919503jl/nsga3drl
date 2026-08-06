@@ -9,6 +9,9 @@ import numpy as np
 
 from nsga3drl.data.io import load_dataset
 from nsga3drl.algorithms.nsga3 import NSGA3Result
+from nsga3drl.dynamic.execution import execute_routes
+from nsga3drl.problem.encoding import decode, encode
+from nsga3drl.problem.open_mtsp import OpenMTSPProblem
 from nsga3drl.rl.environment import OperatorSelectionEnv
 from nsga3drl.rl.ppo import PPOTrainer
 
@@ -20,8 +23,10 @@ def main() -> None:
     parser.add_argument("--generations", type=int, default=20)
     parser.add_argument("--population", type=int, default=48)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--preference", type=float, nargs=2, default=None, metavar=("EFFICIENCY", "FAIRNESS"), help="Override dataset preference for every test instance.")
     parser.add_argument("--metrics", help="JSON report path; defaults to <checkpoint>.eval.json")
     args = parser.parse_args()
+    cli_preference = tuple(args.preference) if args.preference is not None else None
     trainer = PPOTrainer.load(args.checkpoint)
     started = time.perf_counter()
     instances = load_dataset(args.dataset)
@@ -33,6 +38,7 @@ def main() -> None:
             population_size=args.population,
             generations=args.generations,
             seed=args.seed + index,
+            preference=cli_preference,
         )
         observation = environment.reset()
         done = False
@@ -45,22 +51,32 @@ def main() -> None:
         instance_elapsed = time.perf_counter() - instance_started
         algorithm = environment.algorithm
         result = NSGA3Result(algorithm.population, algorithm.objectives, algorithm.history)
-        preferred_index = result.preferred_index(instance.preference)
+        preference = cli_preference if cli_preference is not None else instance.preference
+        if preference is None:
+            raise ValueError(f"{instance.instance_id} has no preference; supply --preference EFFICIENCY FAIRNESS")
+        preferred_index = result.preferred_index(preference)
         preferred_genome = result.population[preferred_index]
         preferred_objective = result.objectives[preferred_index]
-        vehicle_route_lengths = algorithm.problem.route_lengths(preferred_genome).tolist()
+        execution = execute_routes(instance, decode(preferred_genome, instance.vehicle_count))
+        executed_problem = OpenMTSPProblem(execution.instance)
+        executed_genome = encode(execution.routes, instance.vehicle_count)
+        executed_objective = executed_problem.evaluate(executed_genome)
+        vehicle_route_lengths = executed_problem.route_lengths(executed_genome).tolist()
         preferred = {
-            "preference": list(instance.preference),
-            "total_distance": float(preferred_objective[0]),
-            "variance": float(preferred_objective[1]),
+            "preference": list(preference),
+            "initial_total_distance": float(preferred_objective[0]),
+            "initial_variance": float(preferred_objective[1]),
+            "total_distance": float(executed_objective[0]),
+            "variance": float(executed_objective[1]),
             "vehicle_route_lengths": vehicle_route_lengths,
         }
         results.append({
             "instance_id": instance.instance_id,
             "final_hv": float(info["hypervolume"]),
             "reward_sum": float(reward_sum),
-            "events": events,
-            "active_tasks": algorithm.problem.task_count,
+            "events": len(execution.event_log),
+            "active_tasks": executed_problem.task_count,
+            "dynamic_time_seconds": execution.elapsed_seconds,
             "elapsed_seconds": instance_elapsed,
             "preferred_solution": preferred,
         })
@@ -68,7 +84,7 @@ def main() -> None:
         projected_total = elapsed / (index + 1) * len(instances)
         print(
             f"instance={instance.instance_id} final_hv={info['hypervolume']:.4f} "
-            f"reward_sum={reward_sum:.5f} events={events} active_tasks={environment.algorithm.problem.task_count} "
+            f"reward_sum={reward_sum:.5f} events={len(execution.event_log)} active_tasks={executed_problem.task_count} "
             f"elapsed={instance_elapsed:.3f}s projected_total={projected_total:.3f}s "
             f"preferred_distance={preferred['total_distance']:.3f} preferred_variance={preferred['variance']:.3f} "
             f"preference={preferred['preference']}"
