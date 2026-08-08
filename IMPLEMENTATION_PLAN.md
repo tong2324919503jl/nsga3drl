@@ -345,3 +345,11 @@ tests/
 该顺序可以确保每一阶段都有可验证产物，并将复杂的 RL 训练问题建立在已验证的优化和动态调度基础之上。
 python -c "import sys,numpy,scipy,torch; print(sys.version); print('numpy', numpy.__version__); print('scipy', scipy.__version__);
 print('torch', torch.__version__); print('cuda', torch.cuda.is_available())"
+python scripts/evaluate_ppo.py \
+    --dataset data/test_150x10_compatible \
+    --checkpoint checkpoints/ppo_mixed_operators.best.pt \
+    --generations 160 \
+    --population 32 \
+    --seed 42 \
+    --metrics results/ppo_mixed_operators.eval.json \
+    --preference 1.0 0.0

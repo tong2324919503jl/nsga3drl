@@ -196,12 +196,15 @@ class NSGA3:
             self.last_hv_delta = 0.0
         return len(scheduled)
 
-    def _tournament(self) -> np.ndarray:
+    def _tournament(self, ranks: np.ndarray | None = None) -> np.ndarray:
         assert self.population is not None and self.objectives is not None
         candidates = self.rng.choice(len(self.population), size=2, replace=False)
-        fronts = non_dominated_sort(self.objectives)
-        rank = {item: index for index, front in enumerate(fronts) for item in front}
-        winner = min(candidates, key=lambda item: rank[int(item)])
+        if ranks is None:
+            fronts = non_dominated_sort(self.objectives)
+            ranks = np.empty(len(self.population), dtype=int)
+            for rank, front in enumerate(fronts):
+                ranks[front] = rank
+        winner = min(candidates, key=lambda item: ranks[int(item)])
         return self.population[winner]
 
     def _ox(self, left: np.ndarray, right: np.ndarray) -> np.ndarray:
@@ -268,9 +271,17 @@ class NSGA3:
             actions = np.asarray(action, dtype=int)
             if actions.shape != (self.population_size,) or np.any((actions < 0) | (actions >= len(self.ACTIONS))):
                 raise ValueError("action vector must contain one valid action per child")
+        # Parent ranks do not change while offspring are being created.  The
+        # previous implementation recomputed non-dominated sorting for every
+        # tournament, which dominates runtime at realistic population sizes.
+        assert self.objectives is not None
+        fronts = non_dominated_sort(self.objectives)
+        ranks = np.empty(len(self.population), dtype=int)
+        for rank, front in enumerate(fronts):
+            ranks[front] = rank
         children = []
         while len(children) < self.population_size:
-            child = self._ox(self._tournament(), self._tournament())
+            child = self._ox(self._tournament(ranks), self._tournament(ranks))
             children.append(self._mutate(child, int(actions[len(children)])))
         return np.vstack(children)
 
