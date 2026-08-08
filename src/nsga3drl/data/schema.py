@@ -31,7 +31,9 @@ class MTSPInstance:
     vehicle_starts: np.ndarray
     task_coordinates: np.ndarray
     task_ids: np.ndarray | None = None
-    preference: tuple[float, float] | None = (0.5, 0.5)
+    # ``None`` is intentional: a JSON instance without a preference must stay
+    # preference-free so callers can provide weights explicitly at runtime.
+    preference: tuple[float, float] | None = None
     events: list[DynamicEvent] = field(default_factory=list)
     seed: int | None = None
 

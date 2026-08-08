@@ -109,3 +109,18 @@ MVP 使用二维欧氏距离；坐标不是经纬度，也不代表真实路网�
 | `events` | 对应实例的动态事件总数。 |
 
 执行 `python scripts/validate_dataset.py data/test_150x10` 会检查：坐标是否有限、任务点坐标是否重叠、初始和动态任务 ID 是否唯一且互不冲突、完成任务数是否非负，以及 manifest 是否与实际实例文件一致。默认以欧氏距离 `<= 1e-6` 判定任务点重叠；可通过 `--coordinate-tolerance 0.001` 调整容差。车辆起点与任务点重合不会使数据集失败，但会输出警告。
+python scripts/evaluate_ppo.py \
+    --dataset data/test_150x10_compatible \
+    --checkpoint checkpoints/ppo_150x10.best.pt \
+    --generations 160 \
+    --population 32 \
+    --seed 42 \
+    --metrics results/ppo_150x10_compatible.eval.json \
+    --preference 1.0 0.0
+python scripts/run_baseline.py \
+    --instance "$(find data/test_150x10_compatible \
+      -type f -name '*.json' ! -name 'manifest.json' | head -n 1)" \
+    --population 32 \
+    --generations 160 \
+    --seed 42 \
+    --preference 1.0 0.0

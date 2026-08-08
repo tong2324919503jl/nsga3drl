@@ -64,11 +64,18 @@ class OperatorSelectionEnv:
         self.algorithm.initialize()
         return population_features(self.algorithm, self.generations)
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: int | np.ndarray) -> tuple[np.ndarray, float, bool, dict]:
         if self.algorithm is None:
             raise RuntimeError("call reset before step")
-        if not 0 <= action < self.action_count:
-            raise ValueError("invalid action")
+        actions = np.asarray(action, dtype=int)
+        if actions.ndim == 0:
+            if not 0 <= int(actions) < self.action_count:
+                raise ValueError("invalid action")
+            action_counts = np.bincount([int(actions)], minlength=self.action_count)
+        else:
+            if actions.shape != (self.population_size,) or np.any((actions < 0) | (actions >= self.action_count)):
+                raise ValueError("action vector must contain one valid action per offspring")
+            action_counts = np.bincount(actions, minlength=self.action_count)
         before = self.algorithm.current_hypervolume()
         record = self.algorithm.step(action, process_dynamic_events=False)
         after = self.algorithm.current_hypervolume()
@@ -77,7 +84,8 @@ class OperatorSelectionEnv:
         info = {
             "hypervolume": after,
             "generation": self.algorithm.generation,
-            "operator": NSGA3.ACTIONS[action],
+            "operator": NSGA3.ACTIONS[int(actions)] if actions.ndim == 0 else "mixed",
+            "operator_counts": {name: int(action_counts[index]) for index, name in enumerate(NSGA3.ACTIONS)},
             "events_injected": 0,
         }
         return population_features(self.algorithm, self.generations), reward, done, info

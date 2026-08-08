@@ -103,3 +103,10 @@ python scripts/train_ppo.py --dataset data/train --validation-dataset data/valid
 评估调用 `greedy_action`，不计算梯度，也不更新参数；因此在相同实例、种群、代数和硬件条件下，测试阶段通常明显快于训练阶段。
 
 所有脚本接受 `--seed`，便于复现。
+python scripts/run_baseline.py \
+    --dataset data/test_150x10_compatible \
+    --preference 1.0 0.0 \
+    --population 32 \
+    --generations 160 \
+    --seed 42 \
+    --metrics results/baseline_150x10.eval.json \

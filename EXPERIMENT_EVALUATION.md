@@ -58,7 +58,7 @@
 - KD-Tree 近邻查询、距离加权 KNN 顺路分、均衡分、最小增量插入和受影响路径的局部 2-opt。
 - 固定初始路线的等速并行动态执行、KNN 插入、已访问任务去重校验与事件耗时记录。
 - 基于种群数值特征和用户偏好的 MLP Actor-Critic。
-- PPO 学习每代选择 `swap`、`inversion`、`relocate`、`separator_shift` 之一。
+- PPO 学习每代为整个子代种群分配 `swap`、`inversion`、`relocate`、`separator_shift` 的使用比例；每个子代按该比例获得一个算子。
 - 训练 checkpoint、断点续训、训练/测试计时、独立测试集评估和 JSON 结果记录。
 - 最终按用户偏好从帕累托前沿选择推荐解，并记录总距离、方差和各车路径长度。
 

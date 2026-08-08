@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 from pathlib import Path
 import time
@@ -31,6 +32,9 @@ def main() -> None:
     started = time.perf_counter()
     instances = load_dataset(args.dataset)
     results = []
+    total_operator_counts: Counter[str] = Counter()
+    total_probability_sum = np.zeros(OperatorSelectionEnv.action_count, dtype=float)
+    total_probability_steps = 0
     for index, instance in enumerate(instances):
         instance_started = time.perf_counter()
         environment = OperatorSelectionEnv(
@@ -44,10 +48,18 @@ def main() -> None:
         done = False
         reward_sum = 0.0
         events = 0
+        operator_counts: Counter[str] = Counter()
+        probability_sum = np.zeros(OperatorSelectionEnv.action_count, dtype=float)
         while not done:
-            observation, reward, done, info = environment.step(trainer.greedy_action(observation))
+            probability_sum += trainer.operator_probabilities(observation)
+            actions = trainer.greedy_actions(observation, environment.population_size)
+            observation, reward, done, info = environment.step(actions)
             reward_sum += reward
             events += info["events_injected"]
+            operator_counts.update(info["operator_counts"])
+        total_operator_counts.update(operator_counts)
+        total_probability_sum += probability_sum
+        total_probability_steps += args.generations
         instance_elapsed = time.perf_counter() - instance_started
         algorithm = environment.algorithm
         result = NSGA3Result(algorithm.population, algorithm.objectives, algorithm.history)
@@ -57,6 +69,8 @@ def main() -> None:
         preferred_index = result.preferred_index(preference)
         preferred_genome = result.population[preferred_index]
         preferred_objective = result.objectives[preferred_index]
+        initial_problem = OpenMTSPProblem(instance.without_events())
+        initial_vehicle_route_lengths = initial_problem.route_lengths(preferred_genome).tolist()
         execution = execute_routes(instance, decode(preferred_genome, instance.vehicle_count))
         executed_problem = OpenMTSPProblem(execution.instance)
         executed_genome = encode(execution.routes, instance.vehicle_count)
@@ -66,6 +80,7 @@ def main() -> None:
             "preference": list(preference),
             "initial_total_distance": float(preferred_objective[0]),
             "initial_variance": float(preferred_objective[1]),
+            "initial_vehicle_route_lengths": initial_vehicle_route_lengths,
             "total_distance": float(executed_objective[0]),
             "variance": float(executed_objective[1]),
             "vehicle_route_lengths": vehicle_route_lengths,
@@ -74,6 +89,11 @@ def main() -> None:
             "instance_id": instance.instance_id,
             "final_hv": float(info["hypervolume"]),
             "reward_sum": float(reward_sum),
+            "operator_counts": {action: operator_counts[action] for action in environment.algorithm.ACTIONS},
+            "mean_operator_probabilities": {
+                action: float(probability_sum[action_index] / args.generations)
+                for action_index, action in enumerate(environment.algorithm.ACTIONS)
+            },
             "events": len(execution.event_log),
             "active_tasks": executed_problem.task_count,
             "dynamic_time_seconds": execution.elapsed_seconds,
@@ -87,7 +107,10 @@ def main() -> None:
             f"reward_sum={reward_sum:.5f} events={len(execution.event_log)} active_tasks={executed_problem.task_count} "
             f"elapsed={instance_elapsed:.3f}s projected_total={projected_total:.3f}s "
             f"preferred_distance={preferred['total_distance']:.3f} preferred_variance={preferred['variance']:.3f} "
-            f"preference={preferred['preference']}"
+            f"initial_distance={preferred['initial_total_distance']:.3f} initial_variance={preferred['initial_variance']:.3f} "
+            f"preference={preferred['preference']} "
+            f"operators={dict(results[-1]['operator_counts'])} "
+            f"mean_probabilities={results[-1]['mean_operator_probabilities']}"
         )
     values = np.asarray([[item["final_hv"], item["reward_sum"], item["events"], item["active_tasks"], item["elapsed_seconds"]] for item in results], dtype=float)
     total_elapsed = time.perf_counter() - started
@@ -103,12 +126,17 @@ def main() -> None:
         "elapsed_seconds": total_elapsed,
         "projected_total_seconds_last": (total_elapsed / len(instances) * len(instances)) if instances else 0.0,
         "mean_instance_seconds": float(values[:, 4].mean()) if len(values) else 0.0,
+        "operator_counts": {action: total_operator_counts[action] for action in environment.algorithm.ACTIONS},
+        "mean_operator_probabilities": {
+            action: float(total_probability_sum[action_index] / max(total_probability_steps, 1))
+            for action_index, action in enumerate(environment.algorithm.ACTIONS)
+        },
         "results": results,
     }, indent=2), encoding="utf-8")
     print(
         f"summary instances={len(results)} mean_final_hv={values[:, 0].mean():.4f} "
         f"mean_reward_sum={values[:, 1].mean():.5f} mean_events={values[:, 2].mean():.2f} "
-        f"elapsed={total_elapsed:.3f}s metrics={metrics_path}"
+        f"operators={dict(total_operator_counts)} elapsed={total_elapsed:.3f}s metrics={metrics_path}"
     )
 
 

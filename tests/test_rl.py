@@ -29,3 +29,13 @@ def test_ppo_update_and_checkpoint(tmp_path) -> None:
     checkpoint = tmp_path / "ppo.pt"
     trainer.save(checkpoint)
     assert PPOTrainer.load(checkpoint).greedy_action(environment.reset()) in range(OperatorSelectionEnv.action_count)
+
+
+def test_ppo_assigns_multiple_operators_to_one_generation() -> None:
+    environment = OperatorSelectionEnv(generate_instance(6, 2, seed=5), population_size=8, generations=2, seed=5)
+    trainer = PPOTrainer(OperatorSelectionEnv.observation_size, OperatorSelectionEnv.action_count, seed=5)
+    actions = trainer.greedy_actions(environment.reset(), environment.population_size)
+    assert actions.shape == (environment.population_size,)
+    assert set(actions.tolist()) == set(range(OperatorSelectionEnv.action_count))
+    _, _, _, info = environment.step(actions)
+    assert sum(info["operator_counts"].values()) == environment.population_size

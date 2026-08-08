@@ -250,12 +250,28 @@ class NSGA3:
             child[zero], child[target] = child[target], child[zero]
         return child
 
-    def _offspring(self, action: int | None = None) -> np.ndarray:
-        action = int(self.rng.integers(len(self.ACTIONS))) if action is None else action
+    def _offspring(self, action: int | np.ndarray | None = None) -> np.ndarray:
+        """Create one child per population member.
+
+        A scalar keeps the original behaviour: every child in this generation
+        uses the same mutation.  An action vector lets PPO allocate different
+        mutation operators to different children without changing baseline
+        behaviour.
+        """
+        if action is None:
+            actions = np.full(self.population_size, int(self.rng.integers(len(self.ACTIONS))), dtype=int)
+        elif np.isscalar(action):
+            if not 0 <= int(action) < len(self.ACTIONS):
+                raise ValueError("invalid mutation action")
+            actions = np.full(self.population_size, int(action), dtype=int)
+        else:
+            actions = np.asarray(action, dtype=int)
+            if actions.shape != (self.population_size,) or np.any((actions < 0) | (actions >= len(self.ACTIONS))):
+                raise ValueError("action vector must contain one valid action per child")
         children = []
         while len(children) < self.population_size:
             child = self._ox(self._tournament(), self._tournament())
-            children.append(self._mutate(child, action))
+            children.append(self._mutate(child, int(actions[len(children)])))
         return np.vstack(children)
 
     def _select(self, combined_population: np.ndarray, combined_objectives: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -288,7 +304,7 @@ class NSGA3:
                 remaining -= 1
         return combined_population[selected], combined_objectives[selected]
 
-    def step(self, action: int | None = None, process_dynamic_events: bool = True) -> dict:
+    def step(self, action: int | np.ndarray | None = None, process_dynamic_events: bool = True) -> dict:
         if self.population is None:
             self.initialize()
         assert self.population is not None and self.objectives is not None

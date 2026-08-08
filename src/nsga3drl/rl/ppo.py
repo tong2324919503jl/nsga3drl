@@ -31,7 +31,7 @@ class PPOConfig:
     gae_lambda: float = 0.95
     clip_ratio: float = 0.2
     epochs: int = 4
-    entropy_coefficient: float = 0.01
+    entropy_coefficient: float = 0.05
     value_coefficient: float = 0.5
 
 
@@ -99,13 +99,50 @@ class PPOTrainer:
         distribution, _ = self.model(tensor)
         return int(distribution.probs.argmax(dim=-1).item())
 
+    @torch.no_grad()
+    def operator_probabilities(self, observation: np.ndarray) -> np.ndarray:
+        tensor = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+        distribution, _ = self.model(tensor)
+        return distribution.probs.squeeze(0).cpu().numpy()
+
+    @torch.no_grad()
+    def act_population(self, observation: np.ndarray, child_count: int) -> tuple[np.ndarray, float, float]:
+        """Sample a mutation operator for each child in the next generation."""
+        tensor = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+        distribution, value = self.model(tensor)
+        actions = distribution.sample((child_count,)).squeeze(-1)
+        log_probability = distribution.log_prob(actions).mean()
+        return actions.cpu().numpy().astype(int), float(log_probability.item()), float(value.item())
+
+    @torch.no_grad()
+    def greedy_actions(self, observation: np.ndarray, child_count: int) -> np.ndarray:
+        """Allocate children by policy probability while preserving operator diversity.
+
+        One child per operator is reserved when the population permits it;
+        remaining children use largest-remainder allocation of the PPO policy
+        probabilities.  This is deterministic for a fixed network and state.
+        """
+        if child_count < self.model.policy.out_features:
+            raise ValueError("child_count must be at least the number of mutation operators")
+        probabilities = self.operator_probabilities(observation)
+        action_count = len(probabilities)
+        remaining = child_count - action_count
+        raw_counts = probabilities * remaining
+        counts = np.floor(raw_counts).astype(int) + 1
+        leftovers = remaining - int(np.floor(raw_counts).sum())
+        if leftovers:
+            fractions = raw_counts - np.floor(raw_counts)
+            for index in np.argsort(-fractions, kind="stable")[:leftovers]:
+                counts[int(index)] += 1
+        return np.repeat(np.arange(action_count, dtype=int), counts)
+
     def collect(self, environments: list[OperatorSelectionEnv]) -> dict[str, np.ndarray]:
         data = {key: [] for key in ("observations", "actions", "log_probs", "rewards", "values", "dones")}
         for index, environment in enumerate(environments):
             observation = environment.reset(seed=environment.seed + index)
             done = False
             while not done:
-                action, log_prob, value = self.act(observation)
+                action, log_prob, value = self.act_population(observation, environment.population_size)
                 next_observation, reward, done, _ = environment.step(action)
                 data["observations"].append(observation)
                 data["actions"].append(action)
@@ -143,7 +180,12 @@ class PPOTrainer:
         entropies = []
         for _ in range(self.config.epochs):
             distribution, predicted_values = self.model(observations)
-            ratio = torch.exp(distribution.log_prob(actions) - old_log_probs)
+            if actions.ndim == 1:
+                current_log_probs = distribution.log_prob(actions)
+            else:
+                child_distribution = Categorical(logits=distribution.logits.unsqueeze(1).expand(-1, actions.shape[1], -1))
+                current_log_probs = child_distribution.log_prob(actions).mean(dim=1)
+            ratio = torch.exp(current_log_probs - old_log_probs)
             policy_loss = -torch.minimum(ratio * advantages_t, torch.clamp(ratio, 1 - self.config.clip_ratio, 1 + self.config.clip_ratio) * advantages_t).mean()
             value_loss = nn.functional.mse_loss(predicted_values, returns_t)
             loss = policy_loss + self.config.value_coefficient * value_loss - self.config.entropy_coefficient * distribution.entropy().mean()
