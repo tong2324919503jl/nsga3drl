@@ -12,6 +12,9 @@ from torch.distributions import Categorical
 from .environment import OperatorSelectionEnv
 
 
+OPERATOR_NAMES = ("swap", "inversion", "relocate", "separator_shift")
+
+
 class PopulationActorCritic(nn.Module):
     def __init__(self, observation_size: int, action_count: int, hidden_size: int = 64):
         super().__init__()
@@ -106,13 +109,13 @@ class PPOTrainer:
         return distribution.probs.squeeze(0).cpu().numpy()
 
     @torch.no_grad()
-    def act_population(self, observation: np.ndarray, child_count: int) -> tuple[np.ndarray, float, float]:
+    def act_population(self, observation: np.ndarray, child_count: int) -> tuple[np.ndarray, np.ndarray, float]:
         """Sample a mutation operator for each child in the next generation."""
         tensor = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
         distribution, value = self.model(tensor)
         actions = distribution.sample((child_count,)).squeeze(-1)
-        log_probability = distribution.log_prob(actions).mean()
-        return actions.cpu().numpy().astype(int), float(log_probability.item()), float(value.item())
+        log_probabilities = distribution.log_prob(actions)
+        return actions.cpu().numpy().astype(int), log_probabilities.cpu().numpy(), float(value.item())
 
     @torch.no_grad()
     def greedy_actions(self, observation: np.ndarray, child_count: int) -> np.ndarray:
@@ -137,19 +140,22 @@ class PPOTrainer:
         return np.repeat(np.arange(action_count, dtype=int), counts)
 
     def collect(self, environments: list[OperatorSelectionEnv]) -> dict[str, np.ndarray]:
-        data = {key: [] for key in ("observations", "actions", "log_probs", "rewards", "values", "dones")}
+        data = {key: [] for key in ("observations", "actions", "log_probs", "rewards", "values", "dones", "operator_credits")}
         for index, environment in enumerate(environments):
             observation = environment.reset(seed=environment.seed + index)
             done = False
             while not done:
                 action, log_prob, value = self.act_population(observation, environment.population_size)
-                next_observation, reward, done, _ = environment.step(action)
+                next_observation, reward, done, info = environment.step(action)
                 data["observations"].append(observation)
                 data["actions"].append(action)
                 data["log_probs"].append(log_prob)
                 data["rewards"].append(reward)
                 data["values"].append(value)
                 data["dones"].append(done)
+                data["operator_credits"].append(
+                    [info["operator_credits"][name] for name in OPERATOR_NAMES]
+                )
                 observation = next_observation
         return {key: np.asarray(value) for key, value in data.items()}
 
@@ -157,6 +163,7 @@ class PPOTrainer:
         rewards = rollout["rewards"].astype(np.float32)
         values = rollout["values"].astype(np.float32)
         dones = rollout["dones"].astype(bool)
+        operator_credits = rollout["operator_credits"].astype(np.float32)
         advantages = np.zeros_like(rewards)
         next_advantage = 0.0
         next_value = 0.0
@@ -172,6 +179,7 @@ class PPOTrainer:
         observations = torch.as_tensor(rollout["observations"], dtype=torch.float32, device=self.device)
         actions = torch.as_tensor(rollout["actions"], dtype=torch.int64, device=self.device)
         old_log_probs = torch.as_tensor(rollout["log_probs"], dtype=torch.float32, device=self.device)
+        action_credits = torch.as_tensor(operator_credits, dtype=torch.float32, device=self.device)
         advantages_t = torch.as_tensor(advantages, dtype=torch.float32, device=self.device)
         returns_t = torch.as_tensor(returns, dtype=torch.float32, device=self.device)
         losses = []
@@ -182,11 +190,23 @@ class PPOTrainer:
             distribution, predicted_values = self.model(observations)
             if actions.ndim == 1:
                 current_log_probs = distribution.log_prob(actions)
+                actor_advantages = advantages_t
             else:
                 child_distribution = Categorical(logits=distribution.logits.unsqueeze(1).expand(-1, actions.shape[1], -1))
                 current_log_probs = child_distribution.log_prob(actions).mean(dim=1)
-            ratio = torch.exp(current_log_probs - old_log_probs)
-            policy_loss = -torch.minimum(ratio * advantages_t, torch.clamp(ratio, 1 - self.config.clip_ratio, 1 + self.config.clip_ratio) * advantages_t).mean()
+                # Each child receives the credit of the operator it used.  The
+                # critic still learns from the global HV reward below.
+                per_child_credits = action_credits.gather(1, actions)
+                actor_advantages = (per_child_credits - per_child_credits.mean()) / (per_child_credits.std() + 1e-8)
+                current_log_probs = child_distribution.log_prob(actions)
+            if actions.ndim == 1:
+                ratio = torch.exp(current_log_probs - old_log_probs)
+                clipped = torch.clamp(ratio, 1 - self.config.clip_ratio, 1 + self.config.clip_ratio)
+                policy_loss = -torch.minimum(ratio * actor_advantages, clipped * actor_advantages).mean()
+            else:
+                ratio = torch.exp(current_log_probs - old_log_probs)
+                clipped = torch.clamp(ratio, 1 - self.config.clip_ratio, 1 + self.config.clip_ratio)
+                policy_loss = -torch.minimum(ratio * actor_advantages, clipped * actor_advantages).mean()
             value_loss = nn.functional.mse_loss(predicted_values, returns_t)
             loss = policy_loss + self.config.value_coefficient * value_loss - self.config.entropy_coefficient * distribution.entropy().mean()
             self.optimizer.zero_grad()

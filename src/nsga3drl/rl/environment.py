@@ -14,7 +14,12 @@ def population_features(algorithm: NSGA3, max_generations: int) -> np.ndarray:
     reference = np.maximum(algorithm.hv_reference, 1e-9)
     # Use the fixed HV reference for this dynamic segment. Dividing each mean
     # by itself would make both mean features always equal to one.
-    front_size = len(non_dominated_sort(objectives)[0])
+    front_indices = non_dominated_sort(objectives)[0]
+    front_size = len(front_indices)
+    front = objectives[front_indices]
+    front_range = _safe_range(front, reference)
+    efficiency_extreme = front[np.argmin(front[:, 0])]
+    fairness_extreme = front[np.argmin(front[:, 1])]
     return np.asarray([
         algorithm.generation / max(max_generations, 1),
         current_hv / max(float(algorithm.hv_reference.prod()), 1e-9),
@@ -29,14 +34,27 @@ def population_features(algorithm: NSGA3, max_generations: int) -> np.ndarray:
         len(np.unique(np.argmin(np.abs(objectives[:, 0, None] - np.linspace(objectives[:, 0].min(), objectives[:, 0].max(), 8)), axis=1))) / 8,
         algorithm.problem.instance.preference[0],
         algorithm.problem.instance.preference[1],
+        front_range[0],
+        front_range[1],
+        efficiency_extreme[1] / reference[1],
+        fairness_extreme[0] / reference[0],
+        *algorithm.last_operator_credits.tolist(),
+        *algorithm.last_operator_allocation.tolist(),
+        algorithm.stagnation_generations / max(max_generations, 1),
     ], dtype=np.float32)
+
+
+def _safe_range(values: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    if len(values) == 0:
+        return np.zeros(2, dtype=float)
+    return (values.max(axis=0) - values.min(axis=0)) / reference
 
 
 class OperatorSelectionEnv:
     """One RL step equals one NSGA-III generation; action selects a mutation operator."""
 
     action_count = len(NSGA3.ACTIONS)
-    observation_size = 13
+    observation_size = 26
 
     def __init__(
         self,
@@ -86,6 +104,7 @@ class OperatorSelectionEnv:
             "generation": self.algorithm.generation,
             "operator": NSGA3.ACTIONS[int(actions)] if actions.ndim == 0 else "mixed",
             "operator_counts": {name: int(action_counts[index]) for index, name in enumerate(NSGA3.ACTIONS)},
+            "operator_credits": dict(zip(NSGA3.ACTIONS, self.algorithm.last_operator_credits.tolist())),
             "events_injected": 0,
         }
         return population_features(self.algorithm, self.generations), reward, done, info

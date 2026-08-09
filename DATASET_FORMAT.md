@@ -124,3 +124,34 @@ python scripts/run_baseline.py \
     --generations 160 \
     --seed 42 \
     --preference 1.0 0.0
+
+python scripts/run_baseline.py \
+    --dataset data/test_150x10_compatible \
+    --preference 0.0 1.0 \
+    --population 32 \
+    --generations 240 \
+    --seed 42 \
+    --metrics results/baseline_g240.fairness.eval.json
+python scripts/run_baseline.py \
+    --dataset data/test_150x10_compatible \
+    --preference 0.0 1.0 \
+    --population 32 \
+    --generations 240 \
+    --seed 42 \
+    --metrics results/baseline_g240.fairness.eval.json
+python scripts/train_ppo.py \
+    --dataset data/train_clustered_extremes_150x10 \
+    --validation-dataset data/validation_clustered_extremes_150x10 \
+    --validation-every 50 \
+    --validation-instances 5 \
+    --updates 1 \
+    --episodes-per-update 4 \
+    --generations 240 \
+    --population 32 \
+    --sampling epoch \
+    --entropy-start 0.05 \
+    --entropy-end 0.005 \
+    --entropy-anneal-updates 160 \
+    --seed 42 \
+    --checkpoint checkpoints/ppo_heuristic_local_search_g240.pt \
+    --metrics results/ppo_heuristic_local_search_g240.train.json

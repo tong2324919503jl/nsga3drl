@@ -35,6 +35,14 @@ class EpochSampler:
         return selected
 
 
+def entropy_coefficient(update_index: int, start: float, end: float, anneal_updates: int) -> float:
+    """Linearly reduce exploration pressure across PPO updates."""
+    if anneal_updates <= 1:
+        return end
+    progress = min(update_index / (anneal_updates - 1), 1.0)
+    return start + (end - start) * progress
+
+
 def evaluate_validation(
     trainer: PPOTrainer,
     instances,
@@ -55,7 +63,8 @@ def evaluate_validation(
         done = False
         reward_sum = 0.0
         while not done:
-            observation, reward, done, _ = environment.step(trainer.greedy_action(observation))
+            actions = trainer.greedy_actions(observation, environment.population_size)
+            observation, reward, done, _ = environment.step(actions)
             reward_sum += reward
         rewards.append(reward_sum)
     return {
@@ -80,14 +89,23 @@ def main() -> None:
     parser.add_argument("--resume", help="Resume PPO model and optimizer state from this checkpoint.")
     parser.add_argument("--metrics", help="JSON report path; defaults to <checkpoint>.train.json")
     parser.add_argument("--sampling", choices=("epoch", "random"), default="epoch")
+    parser.add_argument("--entropy-start", type=float, default=0.05, help="Entropy coefficient at update 1.")
+    parser.add_argument("--entropy-end", type=float, default=0.005, help="Entropy coefficient after annealing.")
+    parser.add_argument("--entropy-anneal-updates", type=int, help="Updates used for linear entropy annealing; defaults to --updates.")
     parser.add_argument("--validation-dataset", help="Independent dataset used to select the best checkpoint.")
     parser.add_argument("--validation-every", type=int, default=0, help="Validate every N updates; 0 disables validation.")
     parser.add_argument("--validation-instances", type=int, default=10, help="Maximum validation instances per validation pass; 0 uses all.")
     args = parser.parse_args()
+    if args.entropy_start < 0 or args.entropy_end < 0:
+        parser.error("entropy coefficients must be non-negative")
+    anneal_updates = args.entropy_anneal_updates or args.updates
+    if anneal_updates < 1:
+        parser.error("--entropy-anneal-updates must be positive")
     cli_preference = tuple(args.preference) if args.preference is not None else None
     trainer = PPOTrainer.load(args.resume) if args.resume else PPOTrainer(
         OperatorSelectionEnv.observation_size, OperatorSelectionEnv.action_count, seed=args.seed
     )
+    trainer.config.entropy_coefficient = args.entropy_start
     dataset = load_dataset(args.dataset) if args.dataset else None
     if dataset and any(instance.events for instance in dataset):
         print("note: dynamic events are excluded from PPO training and handled after the initial plan")
@@ -104,6 +122,10 @@ def main() -> None:
     update_records = []
     for update in range(args.updates):
         update_started = time.perf_counter()
+        current_entropy_coefficient = entropy_coefficient(
+            update, args.entropy_start, args.entropy_end, anneal_updates
+        )
+        trainer.config.entropy_coefficient = current_entropy_coefficient
         # Epoch sampling visits every instance once before starting a reshuffled pass.
         selected = (
             epoch_sampler.take(args.episodes_per_update) if epoch_sampler
@@ -137,6 +159,7 @@ def main() -> None:
             "rollout_steps": int(len(rollout["rewards"])),
             "projected_total_seconds": projected_total,
             "dataset_epochs_completed": epoch_sampler.completed_epochs if epoch_sampler else None,
+            "entropy_coefficient": current_entropy_coefficient,
         })
         if args.validation_every and (update + 1) % args.validation_every == 0:
             validation = evaluate_validation(
@@ -161,6 +184,7 @@ def main() -> None:
             f"update={update + 1} loss={metrics['loss']:.4f} "
             f"policy_loss={metrics['policy_loss']:.4f} value_loss={metrics['value_loss']:.4f} "
             f"entropy={metrics['entropy']:.4f} mean_reward={metrics['mean_reward']:.5f} "
+            f"entropy_coefficient={current_entropy_coefficient:.5f} "
             f"elapsed={update_elapsed:.3f}s projected_total={projected_total:.3f}s"
         )
     total_elapsed = time.perf_counter() - started
@@ -176,6 +200,9 @@ def main() -> None:
         "generations": args.generations,
         "population": args.population,
         "sampling": args.sampling,
+        "entropy_start": args.entropy_start,
+        "entropy_end": args.entropy_end,
+        "entropy_anneal_updates": anneal_updates,
         "dataset_epochs_completed": epoch_sampler.completed_epochs if epoch_sampler else None,
         "validation_dataset": args.validation_dataset,
         "validation_every": args.validation_every,

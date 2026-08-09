@@ -10,6 +10,7 @@ from ..data.schema import DynamicEvent
 from ..dynamic.insertion import DynamicInsertionPlanner
 from ..problem.encoding import decode, encode, random_genome
 from ..problem.open_mtsp import OpenMTSPProblem
+from .route_construction import improve_routes, initial_population
 
 
 def dominates(left: np.ndarray, right: np.ndarray) -> bool:
@@ -130,12 +131,12 @@ class NSGA3:
         self._processed_event_ids: set[int] = set()
         self.event_log: list[dict] = []
         self.last_hv_delta = 0.0
+        self.last_operator_credits = np.zeros(len(self.ACTIONS), dtype=float)
+        self.last_operator_allocation = np.zeros(len(self.ACTIONS), dtype=float)
+        self.stagnation_generations = 0
 
     def initialize(self) -> None:
-        self.population = np.vstack([
-            random_genome(self.problem.task_count, self.problem.vehicle_count, self.rng)
-            for _ in range(self.population_size)
-        ])
+        self.population = initial_population(self.problem.instance, self.population_size, self.rng)
         self.objectives = self.problem.evaluate_population(self.population)
         self.generation = 0
         self.hv_reference = self.objectives.max(axis=0) * 1.5 + 1.0
@@ -146,7 +147,7 @@ class NSGA3:
         assert self.objectives is not None and self.hv_reference is not None
         return hypervolume_2d(self.objectives, self.hv_reference)
 
-    def _record(self, events_injected: int = 0) -> None:
+    def _record(self, events_injected: int = 0, operator_credits: np.ndarray | None = None) -> None:
         assert self.objectives is not None and self.hv_reference is not None
         fronts = non_dominated_sort(self.objectives)
         self.history.append({
@@ -156,6 +157,9 @@ class NSGA3:
             "objective_mean": self.objectives.mean(axis=0).tolist(),
             "objective_std": self.objectives.std(axis=0).tolist(),
             "events_injected": events_injected,
+            "operator_credits": (self.last_operator_credits if operator_credits is None else operator_credits).tolist(),
+            "operator_allocation": self.last_operator_allocation.tolist(),
+            "stagnation_generations": self.stagnation_generations,
         })
 
     def process_events(self, generation: int) -> int:
@@ -283,6 +287,8 @@ class NSGA3:
         while len(children) < self.population_size:
             child = self._ox(self._tournament(ranks), self._tournament(ranks))
             children.append(self._mutate(child, int(actions[len(children)])))
+        self.last_operator_allocation = np.bincount(actions, minlength=len(self.ACTIONS)).astype(float) / self.population_size
+        self.last_operator_actions = actions
         return np.vstack(children)
 
     def _select(self, combined_population: np.ndarray, combined_objectives: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -315,6 +321,19 @@ class NSGA3:
                 remaining -= 1
         return combined_population[selected], combined_objectives[selected]
 
+    def _improve_elites(self, limit: int = 2) -> None:
+        """Run bounded local search on a few Pareto elites during evolution."""
+        assert self.population is not None and self.objectives is not None
+        front = non_dominated_sort(self.objectives)[0][:limit]
+        preference = self.problem.instance.preference or (0.5, 0.5)
+        for index in front:
+            routes = decode(self.population[index], self.problem.vehicle_count)
+            improved = improve_routes(routes, self.problem.instance, preference, max_passes=1, max_evaluations=40)
+            genome = encode(improved, self.problem.vehicle_count)
+            objective = self.problem.evaluate(genome)
+            self.population[index] = genome
+            self.objectives[index] = objective
+
     def step(self, action: int | np.ndarray | None = None, process_dynamic_events: bool = True) -> dict:
         if self.population is None:
             self.initialize()
@@ -323,12 +342,24 @@ class NSGA3:
         before_hv = self.current_hypervolume()
         offspring = self._offspring(action)
         offspring_objectives = self.problem.evaluate_population(offspring)
+        operator_credits = np.zeros(len(self.ACTIONS), dtype=float)
+        for operator in range(len(self.ACTIONS)):
+            mask = self.last_operator_actions == operator
+            if np.any(mask):
+                group_objectives = np.vstack([self.objectives, offspring_objectives[mask]])
+                group_hv = hypervolume_2d(group_objectives, self.hv_reference)
+                operator_credits[operator] = (group_hv - before_hv) / max(float(mask.sum()), 1.0)
+        operator_credits /= max(abs(before_hv), 1e-9)
+        self.last_operator_credits = np.clip(operator_credits, -1.0, 1.0)
         self.population, self.objectives = self._select(
             np.vstack([self.population, offspring]), np.vstack([self.objectives, offspring_objectives])
         )
         self.generation += 1
+        if self.generation % 20 == 0:
+            self._improve_elites()
         self.last_hv_delta = self.current_hypervolume() - before_hv
-        self._record(events_injected=events_injected)
+        self.stagnation_generations = self.stagnation_generations + 1 if abs(self.last_hv_delta) < 1e-12 else 0
+        self._record(events_injected=events_injected, operator_credits=self.last_operator_credits)
         return self.history[-1]
 
     def run(self, generations: int, action_selector: Callable[["NSGA3"], int] | None = None) -> NSGA3Result:
