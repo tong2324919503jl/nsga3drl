@@ -1,0 +1,84 @@
+Codex｜学术科研论文写作必装 八大Skill 清单（学术人必收藏）
+Codex｜科研论文写作必装 Skill 清单
+可提取 SKILL.md 直接部署，覆盖文献调研、论文撰写、润色、格式排版、图表描述、查重改写、答辩材料，适合硕博、SCI/中文核心、实验报告、综述写作。
+
+一、文献调研 & 文献管理类
+literature-summary-skill
+功能：输入论文标题/DOI/PDF文本，自动提炼研究目的、方法、创新点、局限性、未来研究方向；生成标准化文献笔记。
+场景：批量阅读文献、搭建文献库、综述素材整理
+具体链接https://github.com/TingruZhang/0-skill-literature-summary
+literature-gap-miner
+功能：横向对比多篇相关文献，挖掘现有研究缺口、争议点、尚未解决问题，为论文创新点提供思路。
+场景：开题报告、综述引言、研究意义撰写
+具体链接https://github.com/wookat/ai-research-skills/tree/main/skills/literature-gap-mining
+citation-formatter-pro
+功能：自动识别引用文献，一键切换格式：GB/T 7714、APA、AMA、IEEE、Nature、Elsevier 期刊格式；修正参考文献标点、大小写。
+场景：参考文献排版、投稿期刊格式调整
+二、论文正文撰写 & 结构化搭建
+thesis-outline-builder
+功能：根据研究主题、实验方案生成完整论文大纲；区分本科毕业论文、硕士论文、SCI原始稿件结构。
+场景：开题、搭建全文框架、调整章节逻辑
+research-intro-writer
+功能：规范撰写引言结构：研究背景→研究现状→现存不足→研究目标→研究内容，符合学术写作范式。
+场景：引言（Introduction）章节初稿
+method-section-standardizer
+功能：标准化研究方法章节；区分实验方法、仿真方案、问卷方法、算法流程，杜绝口语化表述。
+场景：Methods 章节规范化撰写
+result-description-generator
+功能：输入图表数据、曲线图、表格结果，生成客观结果描述；只陈述现象，不提前过度讨论。
+场景：Results 图表文字描述
+discussion-analyst-skill
+功能：指导结果讨论逻辑：对比前人文献→解释实验机制→分析异常数据→研究局限→展望。
+场景：Discussion 难点章节写作
+三、学术润色、去AI痕迹、句式改写（高频刚需）
+academic-humanizer-zh/en
+功能：学术文稿去AI味；打散过于工整排比句式，微调语句逻辑，保留严谨性，降低AI检测风险；支持中英双语。
+场景：论文初稿润色、防止AI写作标记
+academic-polisher-en
+功能：英文稿件专业润色；修正中式英语、优化学术句式、调整时态语态（SCI英文初稿首选）。
+场景：SCI英文稿件、英文摘要润色
+paraphrase-academic
+功能：学术定向改写，严禁篡改实验结论；同义转述用于降重，避免直接抄袭句式，区分可公开转述内容。
+场景：降重改写、文献表述二次组织
+stop-academic-slop
+功能：清除AI高频空洞学术套话、冗余修饰、无意义铺垫，精简文字，提升行文紧凑度。
+场景：通篇精简，满足期刊字数限制
+四、图表、公式、附录辅助
+figure-caption-builder
+功能：生成规范图题、表题；遵循期刊要求：简洁客观、包含样本信息、组别条件。
+场景：图表标题统一撰写
+data-interpret-aider
+功能：解析实验数据趋势、显著性差异、变化规律，提供多种专业表述方式。
+场景：结果分析、图表解读
+五、查重、合规、事实校验
+academic-fact-verifier
+功能：校验文稿中的理论、参数、前人结论，标记无法溯源的推断结论，减少AI幻觉造成学术错误。
+场景：综述、理论类论文避雷
+plagiarism-risk-inspector
+功能：识别高相似风险语句，给出温和改写方案；不保证过查重，但提前预警重复风险。
+场景：初稿自查、修改重复片段
+六、投稿、返修、答辩材料
+response-to-reviewer
+功能：生成审稿意见回复信模板；规范结构：逐条回应、修改说明、稿件标记页码、礼貌学术措辞。
+场景：SCI返修、期刊审稿答复
+cover-letter-generator
+功能：自动生成期刊投稿Cover Letter，包含研究创新、适合期刊理由、无一稿多投声明。
+场景：期刊投稿配套文书
+thesis-defense-slide-builder
+功能：根据论文摘要与大纲，生成答辩PPT提纲，规划每页核心内容。
+场景：开题答辩、毕业答辩PPT框架
+七、格式标准化（高校毕业论文刚需）
+thesis-format-checker
+功能：检查标题层级、行距、图号表号、公式编号、中英文摘要关键词格式；对标学校论文模板规范。
+场景：毕业论文格式自查
+八、中英互译专项
+academic-translator-pro
+功能：学术双向翻译，专业术语统一；区分工科/医学/经管术语库，杜绝机翻语病。
+场景：中文论文译英文、摘要翻译
+Codex 科研新手优先安装清单（6个核心打底）
+literature-summary-skill（文献精读笔记）
+thesis-outline-builder（搭建论文框架）
+academic-humanizer-zh/en（学术去AI味）
+academic-polisher-en（英文润色）
+citation-formatter-pro（参考文献格式化）
+response-to-reviewer（审稿回复）
