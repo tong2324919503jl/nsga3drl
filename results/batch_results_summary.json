@@ -1,0 +1,122 @@
+[
+  {
+    "file_name": "clustered_v10_n150_1081530686.json",
+    "total_distance": 578.6665748840433,
+    "time_total": 5.423489570617676,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1097657231.json",
+    "total_distance": 643.3845511054617,
+    "time_total": 5.153546094894409,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1167425778.json",
+    "total_distance": 649.4310726372909,
+    "time_total": 5.0915772914886475,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1202413557.json",
+    "total_distance": 508.9776308421091,
+    "time_total": 5.186358213424683,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1302740407.json",
+    "total_distance": 723.9811931015024,
+    "time_total": 5.224611043930054,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1357791198.json",
+    "total_distance": 818.684561534684,
+    "time_total": 4.6870105266571045,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1367864806.json",
+    "total_distance": 694.2190823377656,
+    "time_total": 4.6062445640563965,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1394609702.json",
+    "total_distance": 765.4394192856884,
+    "time_total": 5.138165712356567,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1566581934.json",
+    "total_distance": 629.8472910286492,
+    "time_total": 4.575327634811401,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_161576974.json",
+    "total_distance": 862.46107931099,
+    "time_total": 5.117862701416016,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1746484539.json",
+    "total_distance": 628.5330178586869,
+    "time_total": 5.100946664810181,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1826701614.json",
+    "total_distance": 690.1592735168563,
+    "time_total": 5.1156158447265625,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_1960127675.json",
+    "total_distance": 568.9671401903433,
+    "time_total": 5.1631646156311035,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_2008052738.json",
+    "total_distance": 678.0283796290595,
+    "time_total": 5.0963454246521,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_2084654369.json",
+    "total_distance": 766.1385905550711,
+    "time_total": 5.165623426437378,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_35492826.json",
+    "total_distance": 684.5499891103652,
+    "time_total": 4.774905204772949,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_376383645.json",
+    "total_distance": 726.3695102178958,
+    "time_total": 5.095384120941162,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_579362555.json",
+    "total_distance": 734.9611360338234,
+    "time_total": 5.375828266143799,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_661058651.json",
+    "total_distance": 790.434473308041,
+    "time_total": 5.215195178985596,
+    "status": "SUCCESS"
+  },
+  {
+    "file_name": "clustered_v10_n150_87989972.json",
+    "total_distance": 698.0880125604937,
+    "time_total": 5.149346113204956,
+    "status": "SUCCESS"
+  }
+]

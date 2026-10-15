@@ -139,6 +139,36 @@ python scripts/run_baseline.py \
     --generations 240 \
     --seed 42 \
     --metrics results/baseline_g240.fairness.eval.json
+python scripts/run_baseline.py \
+    --dataset data/test_150x10_compatible \
+    --preference 1.0 0.0 \
+    --population 32 \
+    --generations 240 \
+    --seed 42 \
+    --metrics results/baseline_g240.efficiency.eval.json
+python scripts/evaluate_ppo.py \
+    --dataset data/test_150x10_compatible \
+    --checkpoint checkpoints/ppo_constructive_ls_g240_from_scratch_120u.best.pt \
+    --preference 0.0 1.0 \
+    --generations 240 \
+    --population 32 \
+    --seed 42 \
+    --metrics results/ppo_constructive_ls_g240_from_scratch_120u.fairness.eval.json
+python scripts/evaluate_ppo.py \
+  --dataset data/test_150x10_compatible \
+  --checkpoint checkpoints/ppo_constructive_ls_g240_1h.best.pt \
+  --preference 0.0 1.0 \
+  --population 32 \
+  --generations 240 \
+  --seed 42 \
+  --metrics results/ppo_constructive_ls_g240_1h.fairness.eval.json
+python scripts/run_baseline.py \
+    --dataset data/test_150x10_compatible \
+    --preference 0.0 1.0 \
+    --population 32 \
+    --generations 240 \
+    --seed 42 \
+    --metrics results/baseline_constructive_ls_g240.fairness.eval.json
 python scripts/train_ppo.py \
     --dataset data/train_clustered_extremes_150x10 \
     --validation-dataset data/validation_clustered_extremes_150x10 \

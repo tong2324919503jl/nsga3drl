@@ -10,7 +10,7 @@ from ..data.schema import DynamicEvent
 from ..dynamic.insertion import DynamicInsertionPlanner
 from ..problem.encoding import decode, encode, random_genome
 from ..problem.open_mtsp import OpenMTSPProblem
-from .route_construction import improve_routes, initial_population
+from .route_construction import ensure_nonempty_routes, improve_routes, initial_population
 
 
 def dominates(left: np.ndarray, right: np.ndarray) -> bool:
@@ -286,7 +286,13 @@ class NSGA3:
         children = []
         while len(children) < self.population_size:
             child = self._ox(self._tournament(ranks), self._tournament(ranks))
-            children.append(self._mutate(child, int(actions[len(children)])))
+            child = self._mutate(child, int(actions[len(children)]))
+            # Separator moves and relocation can otherwise create an empty
+            # vehicle route.  The experiment requires every vehicle to serve
+            # at least one task, so repair this representation invariant before
+            # evaluating the child.
+            routes = ensure_nonempty_routes(decode(child, self.problem.vehicle_count))
+            children.append(encode(routes, self.problem.vehicle_count))
         self.last_operator_allocation = np.bincount(actions, minlength=len(self.ACTIONS)).astype(float) / self.population_size
         self.last_operator_actions = actions
         return np.vstack(children)
