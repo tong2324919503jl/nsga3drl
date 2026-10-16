@@ -14,19 +14,39 @@ from nsga3drl.problem.encoding import decode, encode
 from nsga3drl.problem.open_mtsp import OpenMTSPProblem
 
 
-def evaluate_instance(instance: MTSPInstance, population: int, generations: int, seed: int, preference_override):
+def evaluate_instance(
+    instance: MTSPInstance,
+    population: int,
+    generations: int,
+    seed: int,
+    preference_override,
+    dynamic_strategy: str = "tsp_scored",
+):
+    # Apply a command-line preference before constructing the algorithm.  The
+    # preference is used not only to choose the final Pareto solution, but also
+    # by constructive seeds and elite local search during static optimization.
+    # Keeping it on the instance makes every stage of this baseline consistent
+    # with the requested evaluation preference.
+    if preference_override is not None:
+        instance = instance.with_preference(tuple(preference_override))
+    preference = instance.preference
+    if preference is None:
+        raise ValueError(f"{instance.instance_id} has no preference; supply --preference EFFICIENCY FAIRNESS")
+
     started = time.perf_counter()
     algorithm = NSGA3(OpenMTSPProblem(instance), population, seed=seed)
     result = algorithm.run(generations)
-    preference = preference_override if preference_override is not None else instance.preference
-    if preference is None:
-        raise ValueError(f"{instance.instance_id} has no preference; supply --preference EFFICIENCY FAIRNESS")
     preferred = result.preferred_index(preference)
     preferred_genome = result.population[preferred]
     initial_problem = OpenMTSPProblem(instance.without_events())
     initial_objective = result.objectives[preferred]
     initial_lengths = initial_problem.route_lengths(preferred_genome).tolist()
-    execution = execute_routes(instance, decode(preferred_genome, instance.vehicle_count))
+    execution = execute_routes(
+        instance,
+        decode(preferred_genome, instance.vehicle_count),
+        preference,
+        dynamic_strategy,
+    )
     final_problem = OpenMTSPProblem(execution.instance)
     final_genome = encode(execution.routes, instance.vehicle_count)
     final_objective = final_problem.evaluate(final_genome)
@@ -47,6 +67,9 @@ def evaluate_instance(instance: MTSPInstance, population: int, generations: int,
         "events": len(execution.event_log),
         "active_tasks": final_problem.task_count,
         "dynamic_time_seconds": execution.elapsed_seconds,
+        "dynamic_strategy": dynamic_strategy,
+        "dynamic_tsp_planning_seconds": sum(event["candidate_planning_seconds"] for event in execution.event_log),
+        "dynamic_event_log": execution.event_log,
         "elapsed_seconds": elapsed,
         "preferred_solution": preferred_solution,
         "pareto_solutions": len(result.pareto_indices),
@@ -64,6 +87,12 @@ def main() -> None:
     parser.add_argument("--instance", help="Path to one instance JSON.")
     parser.add_argument("--dataset", help="Directory of instance JSON files; evaluates every instance.")
     parser.add_argument("--metrics", help="JSON report path for dataset or single-instance results.")
+    parser.add_argument(
+        "--dynamic-strategy",
+        choices=("tsp_scored", "greedy_score_then_tsp"),
+        default="tsp_scored",
+        help="Dynamic assignment policy; default preserves the existing per-vehicle TSP scoring.",
+    )
     args = parser.parse_args()
     if args.instance and args.dataset:
         parser.error("use only one of --instance and --dataset")
@@ -77,7 +106,14 @@ def main() -> None:
     started = time.perf_counter()
     results = []
     for index, instance in enumerate(instances):
-        item = evaluate_instance(instance, args.population, args.generations, args.seed + index, tuple(args.preference) if args.preference else None)
+        item = evaluate_instance(
+            instance,
+            args.population,
+            args.generations,
+            args.seed + index,
+            tuple(args.preference) if args.preference is not None else None,
+            args.dynamic_strategy,
+        )
         results.append(item)
         elapsed = time.perf_counter() - started
         projected = elapsed / (index + 1) * len(instances)
@@ -85,6 +121,8 @@ def main() -> None:
         print(
             f"instance={instance.instance_id} final_hv={item['final_hv']:.4f} reward_sum=0.00000 "
             f"events={item['events']} active_tasks={item['active_tasks']} elapsed={item['elapsed_seconds']:.3f}s "
+            f"dynamic_tsp={item['dynamic_tsp_planning_seconds']:.3f}s "
+            f"dynamic_strategy={item['dynamic_strategy']} "
             f"projected_total={projected:.3f}s preferred_distance={preferred['total_distance']:.3f} "
             f"preferred_variance={preferred['variance']:.3f} initial_distance={preferred['initial_total_distance']:.3f} "
             f"initial_variance={preferred['initial_variance']:.3f} preference={preferred['preference']}"
@@ -100,6 +138,7 @@ def main() -> None:
             "instances": len(results),
             "generations": args.generations,
             "population": args.population,
+            "dynamic_strategy": args.dynamic_strategy,
             "elapsed_seconds": total_elapsed,
             "mean_instance_seconds": mean_elapsed,
             "results": results,

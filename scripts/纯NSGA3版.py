@@ -395,7 +395,7 @@ def main():
             pareto_pop, pareto_fit = nsga3_run(cities, vehicle_starts, run_config)
             chosen = preferred_index(pareto_fit, preference)
             initial_routes = chromosome_routes(pareto_pop[chosen], instance.task_ids, instance.vehicle_count)
-            execution = execute_routes(instance, initial_routes)
+            execution = execute_routes(instance, initial_routes, preference)
             final_problem = OpenMTSPProblem(execution.instance)
             final_objectives = final_problem.evaluate(encode(execution.routes, instance.vehicle_count))
             elapsed = time.perf_counter() - started

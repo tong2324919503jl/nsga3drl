@@ -26,6 +26,12 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--preference", type=float, nargs=2, default=None, metavar=("EFFICIENCY", "FAIRNESS"), help="Override dataset preference for every test instance.")
     parser.add_argument("--metrics", help="JSON report path; defaults to <checkpoint>.eval.json")
+    parser.add_argument(
+        "--dynamic-strategy",
+        choices=("tsp_scored", "greedy_score_then_tsp"),
+        default="tsp_scored",
+        help="Dynamic assignment policy; default preserves the existing per-vehicle TSP scoring.",
+    )
     args = parser.parse_args()
     cli_preference = tuple(args.preference) if args.preference is not None else None
     trainer = PPOTrainer.load(args.checkpoint)
@@ -71,7 +77,12 @@ def main() -> None:
         preferred_objective = result.objectives[preferred_index]
         initial_problem = OpenMTSPProblem(instance.without_events())
         initial_vehicle_route_lengths = initial_problem.route_lengths(preferred_genome).tolist()
-        execution = execute_routes(instance, decode(preferred_genome, instance.vehicle_count))
+        execution = execute_routes(
+            instance,
+            decode(preferred_genome, instance.vehicle_count),
+            preference,
+            args.dynamic_strategy,
+        )
         executed_problem = OpenMTSPProblem(execution.instance)
         executed_genome = encode(execution.routes, instance.vehicle_count)
         executed_objective = executed_problem.evaluate(executed_genome)
@@ -97,6 +108,9 @@ def main() -> None:
             "events": len(execution.event_log),
             "active_tasks": executed_problem.task_count,
             "dynamic_time_seconds": execution.elapsed_seconds,
+            "dynamic_strategy": args.dynamic_strategy,
+            "dynamic_tsp_planning_seconds": sum(event["candidate_planning_seconds"] for event in execution.event_log),
+            "dynamic_event_log": execution.event_log,
             "elapsed_seconds": instance_elapsed,
             "preferred_solution": preferred,
         })
@@ -105,7 +119,8 @@ def main() -> None:
         print(
             f"instance={instance.instance_id} final_hv={info['hypervolume']:.4f} "
             f"reward_sum={reward_sum:.5f} events={len(execution.event_log)} active_tasks={executed_problem.task_count} "
-            f"elapsed={instance_elapsed:.3f}s projected_total={projected_total:.3f}s "
+            f"elapsed={instance_elapsed:.3f}s dynamic_tsp={results[-1]['dynamic_tsp_planning_seconds']:.3f}s "
+            f"projected_total={projected_total:.3f}s "
             f"preferred_distance={preferred['total_distance']:.3f} preferred_variance={preferred['variance']:.3f} "
             f"initial_distance={preferred['initial_total_distance']:.3f} initial_variance={preferred['initial_variance']:.3f} "
             f"preference={preferred['preference']} "
@@ -122,7 +137,8 @@ def main() -> None:
         "dataset": args.dataset,
         "instances": len(instances),
         "generations": args.generations,
-        "population": args.population,
+            "population": args.population,
+            "dynamic_strategy": args.dynamic_strategy,
         "elapsed_seconds": total_elapsed,
         "projected_total_seconds_last": (total_elapsed / len(instances) * len(instances)) if instances else 0.0,
         "mean_instance_seconds": float(values[:, 4].mean()) if len(values) else 0.0,

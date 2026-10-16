@@ -7,7 +7,7 @@ import numpy as np
 
 from ..data.schema import DynamicEvent, MTSPInstance
 from ..problem.encoding import encode
-from .insertion import DynamicInsertionPlanner
+from .insertion import DynamicInsertionPlanner, GreedyScoreDynamicInsertionPlanner
 
 
 @dataclass
@@ -23,9 +23,17 @@ class DynamicExecutionResult:
 def execute_routes(
     instance: MTSPInstance,
     initial_routes: list[list[int]],
-    k_neighbors: int = 8,
+    preference: tuple[float, float] | None = None,
+    dynamic_strategy: str = "tsp_scored",
 ) -> DynamicExecutionResult:
     """Execute a fixed initial plan; dynamic points never call NSGA-III/PPO."""
+    planner_types = {
+        "tsp_scored": DynamicInsertionPlanner,
+        "greedy_score_then_tsp": GreedyScoreDynamicInsertionPlanner,
+    }
+    if dynamic_strategy not in planner_types:
+        raise ValueError(f"unknown dynamic strategy {dynamic_strategy!r}; choose from {tuple(planner_types)}")
+    planner_type = planner_types[dynamic_strategy]
     started = time.perf_counter()
     routes = [list(route) for route in initial_routes]
     completed_routes = [[] for _ in routes]
@@ -49,7 +57,7 @@ def execute_routes(
         while event_index < len(events) and completed >= events[event_index].arrival_completed_tasks:
             event = events[event_index]
             event_started = time.perf_counter()
-            planner = DynamicInsertionPlanner(current_instance, k_neighbors, positions)
+            planner = planner_type(current_instance, positions, preference)
             routes, decision = planner.insert(routes, event.task_id, event.coordinate)
             current_instance = current_instance.with_event_task(event)
             coordinates[event.task_id] = np.asarray(event.coordinate, dtype=float)
@@ -61,6 +69,17 @@ def execute_routes(
                 "position": decision.position,
                 "distance_delta": decision.distance_delta,
                 "local_search_improved": decision.local_search_improved,
+                "candidate_planning_seconds": decision.candidate_planning_seconds,
+                "vehicle_planning_seconds": decision.vehicle_planning_seconds.tolist(),
+                "vehicle_scoring_seconds": decision.vehicle_scoring_seconds.tolist(),
+                "scoring_distance_deltas": decision.scoring_distance_deltas.tolist(),
+                "greedy_insertion_positions": decision.greedy_insertion_positions.tolist(),
+                "selected_tsp_seconds": decision.selected_tsp_seconds,
+                "candidate_task_counts": decision.candidate_task_counts.tolist(),
+                "solver_method": decision.solver_method,
+                "strategy": decision.strategy,
+                "branch_bound_nodes": decision.branch_bound_nodes.tolist(),
+                "fallback_reason": decision.fallback_reason,
                 "elapsed_seconds": time.perf_counter() - event_started,
             })
             event_index += 1
