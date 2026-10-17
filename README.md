@@ -6,7 +6,7 @@
 - 分隔符整数编码、合法性修复、交叉/变异/2-opt；
 - 自包含的 NSGA-III 风格参考方向环境选择；
 - 合成静态/动态数据集生成器；
-- KD-Tree 驱动的动态插点策略；
+- 两种可选的动态插点和剩余路径重规划策略；
 - 种群数值特征 MLP 与 PPO 算子选择环境。
 
 未包含：GAT、交叉注意力、偏好编码网络、PPO 父代选择、真实路网距离。
@@ -82,7 +82,7 @@ python scripts/evaluate_ppo.py --dataset data/test --checkpoint checkpoints/ppo_
 
 NSGA-III/PPO 只优化初始任务；车辆执行初始计划时每完成 10 个任务才触发一次动态插点，动态阶段不再运行 NSGA-III/PPO。
 
-基线为“静态初始 NSGA-III + 随机变异算子选择”，随后使用同一执行器进行 KNN 动态插点；动态执行阶段不再调用 NSGA-III 或 PPO。
+基线为“静态初始 NSGA-III + 随机变异算子选择”，随后使用同一动态执行器；默认采用 `tsp_scored` 逐车 TSP 打分，也可选择 `greedy_score_then_tsp`。动态执行阶段不再调用 NSGA-III 或 PPO。
 
 `run_baseline.py` 和 `evaluate_ppo.py` 输出的 `preferred_solution.total_distance`、`variance` 是动态执行完成后的真实路线目标；`initial_total_distance`、`initial_variance` 是初始 150 点方案的目标。数据集没有偏好字段时，必须通过 `--preference EFFICIENCY FAIRNESS` 提供权重；若数据集有偏好字段，则默认逐实例读取，也可以用命令行覆盖。
 
@@ -103,6 +103,27 @@ python scripts/train_ppo.py --dataset data/train --validation-dataset data/valid
 评估调用 `greedy_action`，不计算梯度，也不更新参数；因此在相同实例、种群、代数和硬件条件下，测试阶段通常明显快于训练阶段。
 
 所有脚本接受 `--seed`，便于复现。
+
+## 并行、可续跑的批量评估
+
+`scripts/run_parallel_evaluation.py` 可将不同实例、偏好、PPO checkpoint 版本和动态策略拆成独立任务，在多个 CPU 进程中并行评估。每完成一个任务就提交到 SQLite 状态库；中断后重复执行相同命令，会跳过已完成任务。改变数据集、checkpoint、偏好或算法参数时需要使用新的 `--state-db`，否则脚本会拒绝混用不同配置的结果。
+
+```bash
+python scripts/run_parallel_evaluation.py \
+  --dataset data/test_150x10_compatible \
+  --checkpoint ppo1h=checkpoints/ppo_constructive_ls_g240_1h.best.pt \
+  --method ppo --method baseline \
+  --dynamic-strategy greedy_score_then_tsp \
+  --dynamic-strategy tsp_scored \
+  --preference 1.0 0.0 --preference 0.8 0.2 --preference 0.6 0.4 \
+  --preference 0.5 0.5 --preference 0.4 0.6 --preference 0.2 0.8 \
+  --preference 0.0 1.0 \
+  --generations 240 --population 32 --seed 42 --workers 8 \
+  --output-dir results/preference_comparison \
+  --state-db results/preference_comparison/resume.sqlite3
+```
+
+`--checkpoint LABEL=PATH` 和 `--method` 可重复提供，以并行比较多个模型版本与 baseline；偏好和动态策略也支持重复提供。每个组合写出独立的兼容评估 JSON，SQLite 数据库是断点续跑的权威记录。按 `Ctrl+C` 会在当前运行任务完成后保存进度；重新执行原命令即可续跑。
 python scripts/run_baseline.py \
     --dataset data/test_150x10_compatible \
     --preference 1.0 0.0 \

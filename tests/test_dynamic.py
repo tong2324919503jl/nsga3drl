@@ -138,6 +138,31 @@ def test_greedy_score_path_runs_tsp_only_for_selected_vehicle() -> None:
     assert decision.solver_method == "held_karp"
 
 
+def test_greedy_balance_score_uses_post_insertion_global_variance() -> None:
+    instance = MTSPInstance(
+        "greedy-balance", [[0, 0], [20, 0]],
+        [[1, 0], [5, 0], [18, 0], [25, 0]],
+    )
+    planner = GreedyScoreDynamicInsertionPlanner(instance, preference=(0.0, 1.0))
+    routes = [[1, 2], [3, 4]]
+    _, decision = planner.insert(routes, 5, (10, 0))
+
+    current_lengths = np.asarray([
+        planner._route_length(vehicle, route)
+        for vehicle, route in enumerate(routes)
+    ])
+    candidate_lengths = np.broadcast_to(current_lengths, (len(routes), len(routes))).copy()
+    candidate_lengths[np.arange(len(routes)), np.arange(len(routes))] += decision.scoring_distance_deltas
+    variances = np.var(candidate_lengths, axis=1)
+    expected = (
+        np.ones(len(routes))
+        if np.isclose(variances.max(), variances.min())
+        else (variances.max() - variances) / (variances.max() - variances.min())
+    )
+
+    assert np.allclose(decision.balance_scores, expected)
+
+
 def test_execution_selects_alternate_dynamic_strategy_without_changing_default() -> None:
     instance = MTSPInstance(
         "strategy-log", [[0, 0], [100, 0]], [[1, 0], [2, 0], [101, 0]],

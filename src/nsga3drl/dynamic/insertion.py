@@ -74,6 +74,30 @@ class DynamicInsertionPlanner:
             current = target
         return length
 
+    def _insertion_delta(self, vehicle: int, route: list[int], task_id: int, position: int) -> float:
+        """Return the exact open-route length change from inserting one task."""
+        previous = (
+            self.vehicle_positions[vehicle]
+            if position == 0
+            else self._coords[route[position - 1]]
+        )
+        task = self._coords[task_id]
+        added = float(np.linalg.norm(task - previous))
+        if position < len(route):
+            following = self._coords[route[position]]
+            added += float(np.linalg.norm(following - task))
+            added -= float(np.linalg.norm(following - previous))
+        return added
+
+    def _best_insertion_position(self, vehicle: int, route: list[int], task_id: int) -> tuple[int, float]:
+        best_position = 0
+        best_delta = float("inf")
+        for position in range(len(route) + 1):
+            delta = self._insertion_delta(vehicle, route, task_id, position)
+            if delta < best_delta:
+                best_position, best_delta = position, delta
+        return best_position, best_delta
+
     def _distance_data(self, vehicle: int, tasks: list[int]) -> tuple[np.ndarray, np.ndarray]:
         coordinates = np.vstack([self._coords[task_id] for task_id in tasks])
         start = self.vehicle_positions[vehicle]
@@ -92,15 +116,18 @@ class DynamicInsertionPlanner:
             costs[1 << last, last] = start_distances[last]
 
         for mask in range(1, state_count):
-            for last in range(count):
-                bit = 1 << last
-                if not mask & bit or mask == bit:
+            last_bits = mask
+            while last_bits:
+                last_bit = last_bits & -last_bits
+                last = last_bit.bit_length() - 1
+                last_bits ^= last_bit
+                previous_mask = mask ^ last_bit
+                if not previous_mask:
                     continue
-                previous_mask = mask ^ bit
                 previous_costs = costs[previous_mask] + distances[:, last]
-                previous_last = int(np.argmin(previous_costs))
-                costs[mask, last] = previous_costs[previous_last]
-                parents[mask, last] = previous_last
+                best_index = int(np.argmin(previous_costs))
+                costs[mask, last] = previous_costs[best_index]
+                parents[mask, last] = best_index
 
         full_mask = state_count - 1
         last = int(np.argmin(costs[full_mask]))
@@ -117,13 +144,7 @@ class DynamicInsertionPlanner:
 
     def _heuristic(self, vehicle: int, tasks: list[int], current_route: list[int]) -> tuple[list[int], bool]:
         """Insertion + nearest-neighbor seeds, each improved by best-improvement 2-opt."""
-        best_position = 0
-        best_insertion_length = float("inf")
-        for position in range(len(current_route) + 1):
-            candidate = current_route[:position] + [tasks[-1]] + current_route[position:]
-            length = self._route_length(vehicle, candidate)
-            if length < best_insertion_length:
-                best_position, best_insertion_length = position, length
+        best_position, _ = self._best_insertion_position(vehicle, current_route, tasks[-1])
         insertion_seed = current_route[:best_position] + [tasks[-1]] + current_route[best_position:]
 
         remaining = set(tasks)
@@ -261,10 +282,8 @@ class DynamicInsertionPlanner:
         if solver == "held_karp":
             best_route, best_length = self._held_karp(vehicle, tasks)
             nodes, exact = 0, True
-            best_insertion_length = min(
-                self._route_length(vehicle, route[:position] + [new_task_id] + route[position:])
-                for position in range(len(route) + 1)
-            )
+            _, best_insertion_delta = self._best_insertion_position(vehicle, route, new_task_id)
+            best_insertion_length = original_length + best_insertion_delta
             improved = best_length + 1e-12 < best_insertion_length
         elif solver == "branch_and_bound":
             incumbent, improved = self._heuristic(vehicle, tasks, route)
@@ -412,13 +431,7 @@ class GreedyScoreDynamicInsertionPlanner(DynamicInsertionPlanner):
         # Greedily test each insertion position without solving a TSP per vehicle.
         for vehicle, route in enumerate(routes):
             vehicle_started = time.perf_counter()
-            best_delta = float("inf")
-            best_position = 0
-            for position in range(len(route) + 1):
-                candidate = route[:position] + [new_task_id] + route[position:]
-                delta = self._route_length(vehicle, candidate) - lengths[vehicle]
-                if delta < best_delta:
-                    best_delta, best_position = delta, position
+            best_position, best_delta = self._best_insertion_position(vehicle, route, new_task_id)
             scoring_deltas[vehicle] = best_delta
             insertion_positions[vehicle] = best_position
             vehicle_scoring_times[vehicle] = time.perf_counter() - vehicle_started
@@ -429,7 +442,17 @@ class GreedyScoreDynamicInsertionPlanner(DynamicInsertionPlanner):
             if delta_span <= 1e-12
             else (scoring_deltas.max() - scoring_deltas) / delta_span
         )
-        balance = 1.0 - (lengths - lengths.min()) / max(lengths.max() - lengths.min(), 1e-12)
+        # Score fairness against the global route-length variance after each
+        # vehicle's greedy insertion candidate, rather than its current length.
+        candidate_lengths = np.broadcast_to(lengths, (len(routes), len(routes))).copy()
+        candidate_lengths[np.arange(len(routes)), np.arange(len(routes))] += scoring_deltas
+        candidate_variances = np.var(candidate_lengths, axis=1)
+        variance_span = float(candidate_variances.max() - candidate_variances.min())
+        balance = (
+            np.ones(len(routes), dtype=float)
+            if variance_span <= 1e-12
+            else (candidate_variances.max() - candidate_variances) / variance_span
+        )
         efficiency_weight, fairness_weight = self.preference
         scores = detour * efficiency_weight + balance * fairness_weight
         candidates = np.flatnonzero(np.isclose(scores, scores.max()))

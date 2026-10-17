@@ -39,6 +39,15 @@
 |---|---|
 | `src/nsga3drl/__init__.py` | Python 包入口和项目简介，不承载具体算法逻辑。 |
 
+### 实验批处理 `src/nsga3drl/experiments`
+
+| 文件 | 作用 |
+|---|---|
+| `__init__.py` | 实验工具包入口。 |
+| `evaluate.py` | 以单个实例为单位执行 PPO 或 baseline 评估，并统一生成评估记录与汇总结构。 |
+| `resume_store.py` | 用 SQLite 持久化完成的任务和运行配置；检查断点续跑参数是否与原任务一致。 |
+| `batch.py` | 展开模型版本、偏好、动态策略和实例的任务组合，进行多进程调度、信号处理、结果归档和断点恢复。 |
+
 ### NSGA-III 与路线构造 `src/nsga3drl/algorithms`
 
 | 文件 | 作用 |
@@ -73,6 +82,7 @@
 | `train_ppo.py` | 训练 PPO 算子选择器；支持数据集采样、每 epoch 无放回遍历、熵退火、验证集、断点续训、最佳 checkpoint 保存和训练耗时预测。 |
 | `evaluate_ppo.py` | 加载 PPO checkpoint，在一个实例或整个数据集上进行确定性评估；输出静态 HV、动态前后路线目标、事件日志、算子统计和耗时。支持 `tsp_scored` 与 `greedy_score_then_tsp`。 |
 | `run_baseline.py` | 运行不使用 PPO 的 NSGA-III baseline；支持单实例/数据集、多种群/代数、偏好覆盖和两种动态策略，输出格式与 PPO 评估基本一致。 |
+| `run_parallel_evaluation.py` | 并行运行 PPO/baseline、多 checkpoint、多偏好、多动态策略和多实例测试；逐个任务存入 SQLite，重复原命令可跳过已完成部分继续运行。 |
 | `纯NSGA3版.py` | 合作者的独立纯 NSGA-III 参考实现，已适配当前实例格式、开放路线目标和动态执行器；用于额外对照，不是 PPO 训练入口。 |
 
 ## 测试 `tests`
@@ -85,5 +95,4 @@
 | `test_nsga3.py` | 测试 NSGA-III 种群合法性和迭代流程。 |
 | `test_dynamic.py` | 测试动态点只插入一次、偏好影响车辆分配、负增量、精确 TSP、分支定界、三级求解器选择、两种动态策略及相同速度下的事件顺序。 |
 | `test_rl.py` | 测试 PPO 环境状态、动态事件不进入训练、PPO 更新、checkpoint 和一个世代内多算子动作。 |
-
 
